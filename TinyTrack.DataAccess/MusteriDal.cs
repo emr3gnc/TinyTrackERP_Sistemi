@@ -1,104 +1,135 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 using TinyTrack.Entities;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class MusteriDal
 {
     private const string SelectSql = """
-        SELECT musteriID, ad, soyad, telefon, adres, kimlikno, kayitTarihi
-        FROM dbo.musteri
+        SELECT musteriID, ad, soyad, telefon, adres, il, ilce, acikAdres, postaKodu, kimlikno, kayitTarihi
+        FROM musteri
         """;
 
-    public List<Musteri> GetAll()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Musteri> TumunuGetir()
     {
-        return DbHelper.ExecuteList($"{SelectSql} ORDER BY ad, soyad", Map);
+        return DbHelper.ListeCalistir($"{SelectSql} ORDER BY ad, soyad", Esle);
     }
 
-    public Musteri? GetById(string musteriID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public Musteri? IdIleGetir(string musteriID)
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             $"{SelectSql} WHERE musteriID = @musteriID",
-            Map,
-            DbHelper.Parameter("@musteriID", musteriID));
+            Esle,
+            DbHelper.Parametre("@musteriID", musteriID));
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public Musteri? KimlikNoIleGetir(string kimlikNo)
+    {
+        return DbHelper.TekKayitCalistir(
+            $"{SelectSql} WHERE kimlikno = @kimlikNo",
+            Esle,
+            DbHelper.Parametre("@kimlikNo", kimlikNo));
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool KimlikNoExists(string kimlikNo, string exceptMusteriID = "")
     {
-        var count = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.musteri WHERE kimlikno = @kimlikNo AND musteriID <> @exceptMusteriID",
-            DbHelper.Parameter("@kimlikNo", kimlikNo),
-            DbHelper.Parameter("@exceptMusteriID", exceptMusteriID));
-        return count > 0;
+        var sayi = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM musteri WHERE kimlikno = @kimlikNo AND musteriID <> @exceptMusteriID",
+            DbHelper.Parametre("@kimlikNo", kimlikNo),
+            DbHelper.Parametre("@exceptMusteriID", exceptMusteriID));
+        return sayi > 0;
     }
 
-    public bool Insert(Musteri musteri)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Ekle(Musteri musteri)
     {
         const string sql = """
-            INSERT INTO dbo.musteri (musteriID, ad, soyad, telefon, adres, kimlikno, kayitTarihi)
-            VALUES (@musteriID, @ad, @soyad, @telefon, @adres, @kimlikno, @kayitTarihi)
+            INSERT INTO musteri (musteriID, ad, soyad, telefon, adres, il, ilce, acikAdres, postaKodu, kimlikno, kayitTarihi)
+            VALUES (@musteriID, @ad, @soyad, @telefon, @adres, @il, @ilce, @acikAdres, @postaKodu, @kimlikno, @kayitTarihi)
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(musteri)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(musteri)) > 0;
     }
 
-    public bool Update(Musteri musteri)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Guncelle(Musteri musteri)
     {
         const string sql = """
-            UPDATE dbo.musteri
+            UPDATE musteri
             SET ad = @ad,
                 soyad = @soyad,
                 telefon = @telefon,
                 adres = @adres,
+                il = @il,
+                ilce = @ilce,
+                acikAdres = @acikAdres,
+                postaKodu = @postaKodu,
                 kimlikno = @kimlikno
             WHERE musteriID = @musteriID
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(musteri)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(musteri)) > 0;
     }
 
-    public bool Delete(string musteriID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Sil(string musteriID)
     {
-        return DbHelper.ExecuteNonQuery(
-            "DELETE FROM dbo.musteri WHERE musteriID = @musteriID",
-            DbHelper.Parameter("@musteriID", musteriID)) > 0;
+        return DbHelper.KomutCalistir(
+            "DELETE FROM musteri WHERE musteriID = @musteriID",
+            DbHelper.Parametre("@musteriID", musteriID)) > 0;
     }
 
-    public List<Musteri> Search(string q)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Musteri> Ara(string q)
     {
-        return DbHelper.ExecuteList(
+        return DbHelper.ListeCalistir(
             $"""
             {SelectSql}
             WHERE ad LIKE @q OR soyad LIKE @q OR telefon LIKE @q OR kimlikno LIKE @q
             ORDER BY ad, soyad
             """,
-            Map,
-            DbHelper.Parameter("@q", $"%{q}%"));
+            Esle,
+            DbHelper.Parametre("@q", $"%{q}%"));
     }
 
-    private static SqlParameter[] Parameters(Musteri musteri)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static SqliteParameter[] Parametreler(Musteri musteri)
     {
         return
         [
-            DbHelper.Parameter("@musteriID", musteri.MusteriID),
-            DbHelper.Parameter("@ad", musteri.Ad),
-            DbHelper.Parameter("@soyad", musteri.Soyad),
-            DbHelper.Parameter("@telefon", musteri.Telefon),
-            DbHelper.Parameter("@adres", musteri.Adres),
-            DbHelper.Parameter("@kimlikno", musteri.KimlikNo),
-            DbHelper.Parameter("@kayitTarihi", musteri.KayitTarihi)
+            DbHelper.Parametre("@musteriID", musteri.MusteriID),
+            DbHelper.Parametre("@ad", musteri.Ad),
+            DbHelper.Parametre("@soyad", musteri.Soyad),
+            DbHelper.Parametre("@telefon", musteri.Telefon),
+            DbHelper.Parametre("@adres", string.IsNullOrWhiteSpace(musteri.Adres) ? musteri.TamAdres : musteri.Adres),
+            DbHelper.Parametre("@il", musteri.Il),
+            DbHelper.Parametre("@ilce", musteri.Ilce),
+            DbHelper.Parametre("@acikAdres", musteri.AcikAdres),
+            DbHelper.Parametre("@postaKodu", musteri.PostaKodu),
+            DbHelper.Parametre("@kimlikno", musteri.KimlikNo),
+            DbHelper.Parametre("@kayitTarihi", musteri.KayitTarihi)
         ];
     }
 
-    private static Musteri Map(SqlDataReader reader)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static Musteri Esle(SqliteDataReader okuyucu)
     {
         return new Musteri
         {
-            MusteriID = reader.ReadString("musteriID"),
-            Ad = reader.ReadString("ad"),
-            Soyad = reader.ReadString("soyad"),
-            Telefon = reader.ReadString("telefon"),
-            Adres = reader.ReadString("adres"),
-            KimlikNo = reader.ReadString("kimlikno"),
-            KayitTarihi = reader.ReadDateTime("kayitTarihi")
+            MusteriID = okuyucu.MetinOku("musteriID"),
+            Ad = okuyucu.MetinOku("ad"),
+            Soyad = okuyucu.MetinOku("soyad"),
+            Telefon = okuyucu.MetinOku("telefon"),
+            Adres = okuyucu.MetinOku("adres"),
+            Il = okuyucu.MetinOku("il"),
+            Ilce = okuyucu.MetinOku("ilce"),
+            AcikAdres = okuyucu.MetinOku("acikAdres"),
+            PostaKodu = okuyucu.MetinOku("postaKodu"),
+            KimlikNo = okuyucu.MetinOku("kimlikno"),
+            KayitTarihi = okuyucu.TarihOku("kayitTarihi")
         };
     }
 }

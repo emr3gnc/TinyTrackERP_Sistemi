@@ -1,9 +1,11 @@
-using TinyTrack.DataAccess;
+﻿using TinyTrack.DataAccess;
 
 namespace TinyTrack.Business;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public static class TinyTrackBootstrapper
 {
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public static void Initialize(string? connectionString)
     {
         if (!string.IsNullOrWhiteSpace(connectionString))
@@ -11,6 +13,6 @@ public static class TinyTrackBootstrapper
             DbHelper.ConnectionString = connectionString;
         }
 
-        DatabaseInitializer.EnsureCreatedAndSeeded();
+        DatabaseInitializer.OlusturuldugunuVeOrnekVerininHazirlandiginiGarantiEt();
     }
 }

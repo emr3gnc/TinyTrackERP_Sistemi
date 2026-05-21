@@ -1,87 +1,97 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 using TinyTrack.Entities;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class HizmetDal
 {
-    private const string SelectSql = "SELECT hizmetID, rezervasyonID, ad, ucret FROM dbo.hizmet";
+    private const string SelectSql = "SELECT hizmetID, rezervasyonID, ad, ucret FROM hizmet";
 
-    public List<Hizmet> GetAll()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Hizmet> TumunuGetir()
     {
-        return DbHelper.ExecuteList($"{SelectSql} ORDER BY ad", Map);
+        return DbHelper.ListeCalistir($"{SelectSql} ORDER BY ad", Esle);
     }
 
-    public List<Hizmet> GetByRezervasyon(string rezervasyonID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Hizmet> RezervasyonaGoreGetir(string rezervasyonID)
     {
-        return DbHelper.ExecuteList(
+        return DbHelper.ListeCalistir(
             $"{SelectSql} WHERE rezervasyonID = @rezervasyonID ORDER BY ad",
-            Map,
-            DbHelper.Parameter("@rezervasyonID", rezervasyonID));
+            Esle,
+            DbHelper.Parametre("@rezervasyonID", rezervasyonID));
     }
 
-    public Hizmet? GetById(string hizmetID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public Hizmet? IdIleGetir(string hizmetID)
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             $"{SelectSql} WHERE hizmetID = @hizmetID",
-            Map,
-            DbHelper.Parameter("@hizmetID", hizmetID));
+            Esle,
+            DbHelper.Parametre("@hizmetID", hizmetID));
     }
 
-    public bool Insert(Hizmet hizmet)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Ekle(Hizmet hizmet)
     {
         const string sql = """
-            INSERT INTO dbo.hizmet (hizmetID, rezervasyonID, ad, ucret)
+            INSERT INTO hizmet (hizmetID, rezervasyonID, ad, ucret)
             VALUES (@hizmetID, @rezervasyonID, @ad, @ucret)
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(hizmet)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(hizmet)) > 0;
     }
 
-    public bool Update(Hizmet hizmet)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Guncelle(Hizmet hizmet)
     {
         const string sql = """
-            UPDATE dbo.hizmet
+            UPDATE hizmet
             SET rezervasyonID = @rezervasyonID,
                 ad = @ad,
                 ucret = @ucret
             WHERE hizmetID = @hizmetID
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(hizmet)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(hizmet)) > 0;
     }
 
-    public bool Delete(string hizmetID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Sil(string hizmetID)
     {
-        return DbHelper.ExecuteNonQuery(
-            "DELETE FROM dbo.hizmet WHERE hizmetID = @hizmetID",
-            DbHelper.Parameter("@hizmetID", hizmetID)) > 0;
+        return DbHelper.KomutCalistir(
+            "DELETE FROM hizmet WHERE hizmetID = @hizmetID",
+            DbHelper.Parametre("@hizmetID", hizmetID)) > 0;
     }
 
-    public decimal GetToplamHizmetUcreti(string rezervasyonID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public decimal ToplamHizmetUcretiniGetir(string rezervasyonID)
     {
-        return DbHelper.ExecuteScalar<decimal>(
-            "SELECT COALESCE(SUM(ucret), 0) FROM dbo.hizmet WHERE rezervasyonID = @rezervasyonID",
-            DbHelper.Parameter("@rezervasyonID", rezervasyonID));
+        return DbHelper.TekDegerCalistir<decimal>(
+            "SELECT COALESCE(SUM(ucret), 0) FROM hizmet WHERE rezervasyonID = @rezervasyonID",
+            DbHelper.Parametre("@rezervasyonID", rezervasyonID));
     }
 
-    private static SqlParameter[] Parameters(Hizmet hizmet)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static SqliteParameter[] Parametreler(Hizmet hizmet)
     {
         return
         [
-            DbHelper.Parameter("@hizmetID", hizmet.HizmetID),
-            DbHelper.Parameter("@rezervasyonID", hizmet.RezervasyonID),
-            DbHelper.Parameter("@ad", hizmet.Ad),
-            DbHelper.Parameter("@ucret", hizmet.Ucret)
+            DbHelper.Parametre("@hizmetID", hizmet.HizmetID),
+            DbHelper.Parametre("@rezervasyonID", hizmet.RezervasyonID),
+            DbHelper.Parametre("@ad", hizmet.Ad),
+            DbHelper.Parametre("@ucret", hizmet.Ucret)
         ];
     }
 
-    private static Hizmet Map(SqlDataReader reader)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static Hizmet Esle(SqliteDataReader okuyucu)
     {
         return new Hizmet
         {
-            HizmetID = reader.ReadString("hizmetID"),
-            RezervasyonID = reader.ReadString("rezervasyonID"),
-            Ad = reader.ReadString("ad"),
-            Ucret = reader.ReadDecimal("ucret")
+            HizmetID = okuyucu.MetinOku("hizmetID"),
+            RezervasyonID = okuyucu.MetinOku("rezervasyonID"),
+            Ad = okuyucu.MetinOku("ad"),
+            Ucret = okuyucu.OndalikOku("ucret")
         };
     }
 }

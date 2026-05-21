@@ -1,5 +1,6 @@
-namespace TinyTrack.Entities;
+﻿namespace TinyTrack.Entities;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class Operasyon
 {
     public string OperasyonID { get; set; } = string.Empty;

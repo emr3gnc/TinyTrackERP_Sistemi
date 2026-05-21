@@ -1,47 +1,51 @@
-using TinyTrack.Entities;
+﻿using TinyTrack.Entities;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class YoneticiDal
 {
-    public DashboardOzet GetDashboardData()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public DashboardOzet PanelVerisiniGetir()
     {
         var today = DateTime.Today;
+        var todayText = today.ToString("yyyy-MM-dd");
         var monthStart = new DateTime(today.Year, today.Month, 1);
         var nextMonth = monthStart.AddMonths(1);
 
-        var bugunkuGiris = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.rezervasyon WHERE durum = N'Aktif' AND bastarih = @today",
-            DbHelper.Parameter("@today", today));
+        var bugunkuGiris = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM rezervasyon WHERE durum = 'Aktif' AND bastarih = @today",
+            DbHelper.Parametre("@today", todayText));
 
-        var bugunkuCikis = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.rezervasyon WHERE durum = N'Aktif' AND sontarih = @today",
-            DbHelper.Parameter("@today", today));
+        var bugunkuCikis = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM rezervasyon WHERE durum = 'Aktif' AND sontarih = @today",
+            DbHelper.Parametre("@today", todayText));
 
-        var temizliktekiVarlik = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.varlik WHERE durum = N'Temizlikte'");
+        var temizliktekiVarlik = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM varlik WHERE durum = 'Temizlikte'");
 
-        var aktifRezervasyon = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.rezervasyon WHERE durum = N'Aktif'");
+        var aktifRezervasyon = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM rezervasyon WHERE durum = 'Aktif'");
 
-        var aylikGelir = GetAylikToplamGelir(monthStart.Month, monthStart.Year);
+        var aylikGelir = AylikToplamGeliriGetir(monthStart.Month, monthStart.Year);
 
-        var dolu = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.varlik WHERE durum = N'Dolu'");
-        var toplam = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.varlik");
+        var dolu = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM varlik WHERE durum = 'Dolu'");
+        var toplam = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM varlik");
         var dolulukOrani = toplam == 0 ? 0 : Math.Round((double)dolu / toplam * 100, 1);
 
-        var siradakiGiris = DbHelper.ExecuteScalar<string>(
+        var siradakiGiris = DbHelper.TekDegerCalistir<string>(
             """
-            SELECT TOP 1 CONCAT(m.ad, ' ', m.soyad, ' - ', v.ad, ' - ', CONVERT(varchar(10), r.bastarih, 104))
-            FROM dbo.rezervasyon r
-            INNER JOIN dbo.musteri m ON m.musteriID = r.musteriID
-            INNER JOIN dbo.varlik v ON v.varlikID = r.varlikID
-            WHERE r.durum = N'Aktif' AND r.bastarih >= @today
+            SELECT m.ad || ' ' || m.soyad || ' - ' || v.ad || ' - ' || strftime('%d.%m.%Y', r.bastarih)
+            FROM rezervasyon r
+            INNER JOIN musteri m ON m.musteriID = r.musteriID
+            INNER JOIN varlik v ON v.varlikID = r.varlikID
+            WHERE r.durum = 'Aktif' AND r.bastarih >= @today
             ORDER BY r.bastarih
+            LIMIT 1
             """,
-            DbHelper.Parameter("@today", today)) ?? "Planli giris yok";
+            DbHelper.Parametre("@today", todayText)) ?? "Planli giris yok";
 
         return new DashboardOzet
         {
@@ -55,76 +59,82 @@ public class YoneticiDal
         };
     }
 
-    public decimal GetAylikToplamGelir(int ay, int yil)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public decimal AylikToplamGeliriGetir(int ay, int yil)
     {
         var start = new DateTime(yil, ay, 1);
         var end = start.AddMonths(1);
-        var odemeGeliri = DbHelper.ExecuteScalar<decimal>(
+        var odemeGeliri = DbHelper.TekDegerCalistir<decimal>(
             """
             SELECT COALESCE(SUM(ucret), 0)
-            FROM dbo.odeme
+            FROM odeme
             WHERE odemetarihi >= @start AND odemetarihi < @end
             """,
-            DbHelper.Parameter("@start", start),
-            DbHelper.Parameter("@end", end));
+            DbHelper.Parametre("@start", start),
+            DbHelper.Parametre("@end", end));
 
         if (odemeGeliri > 0)
         {
             return odemeGeliri;
         }
 
-        return DbHelper.ExecuteScalar<decimal>(
+        return DbHelper.TekDegerCalistir<decimal>(
             """
             SELECT COALESCE(SUM(toplamucret), 0)
-            FROM dbo.rezervasyon
-            WHERE durum <> N'Iptal' AND bastarih >= @start AND bastarih < @end
+            FROM rezervasyon
+            WHERE durum <> 'Iptal' AND bastarih >= @start AND bastarih < @end
             """,
-            DbHelper.Parameter("@start", start),
-            DbHelper.Parameter("@end", end));
+            DbHelper.Parametre("@start", start),
+            DbHelper.Parametre("@end", end));
     }
 
-    public double GetDolulukOrani()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public double DolulukOraniniGetir()
     {
-        var dolu = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.varlik WHERE durum = N'Dolu'");
-        var toplam = DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.varlik");
+        var dolu = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM varlik WHERE durum = 'Dolu'");
+        var toplam = DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM varlik");
         return toplam == 0 ? 0 : Math.Round((double)dolu / toplam * 100, 1);
     }
 
-    public int GetAktifRezervasyonSayisi()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public int AktifRezervasyonSayisiniGetir()
     {
-        return DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.rezervasyon WHERE durum = N'Aktif'");
+        return DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM rezervasyon WHERE durum = 'Aktif'");
     }
 
-    public int GetTemizliktekiVarlikSayisi()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public int TemizliktekiVarlikSayisiniGetir()
     {
-        return DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.varlik WHERE durum = N'Temizlikte'");
+        return DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM varlik WHERE durum = 'Temizlikte'");
     }
 
-    public int GetGunlukGirisCikisSayisi(DateTime tarih)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public int GunlukGirisCikisSayisiniGetir(DateTime tarih)
     {
-        return DbHelper.ExecuteScalar<int>(
+        return DbHelper.TekDegerCalistir<int>(
             """
             SELECT COUNT(1)
-            FROM dbo.rezervasyon
-            WHERE durum = N'Aktif' AND (bastarih = @tarih OR sontarih = @tarih)
+            FROM rezervasyon
+            WHERE durum = 'Aktif' AND (bastarih = @tarih OR sontarih = @tarih)
             """,
-            DbHelper.Parameter("@tarih", tarih.Date));
+            DbHelper.Parametre("@tarih", tarih.ToString("yyyy-MM-dd")));
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool CheckAdminLogin(string kullaniciAdi, string sifre)
     {
-        var count = DbHelper.ExecuteScalar<int>(
+        var sayi = DbHelper.TekDegerCalistir<int>(
             """
             SELECT COUNT(1)
-            FROM dbo.kullanici
-            WHERE (email = @kullaniciAdi OR adSoyad = @kullaniciAdi) AND sifre = @sifre AND rol = N'Yonetici'
+            FROM kullanici
+            WHERE (email = @kullaniciAdi OR adSoyad = @kullaniciAdi) AND sifre = @sifre AND rol = 'Yonetici'
             """,
-            DbHelper.Parameter("@kullaniciAdi", kullaniciAdi),
-            DbHelper.Parameter("@sifre", sifre));
-        return count > 0;
+            DbHelper.Parametre("@kullaniciAdi", kullaniciAdi),
+            DbHelper.Parametre("@sifre", sifre));
+        return sayi > 0;
     }
 }

@@ -1,4 +1,4 @@
-namespace TinyTrack.Entities;
+﻿namespace TinyTrack.Entities;
 
 public enum VarlikDurumu
 {

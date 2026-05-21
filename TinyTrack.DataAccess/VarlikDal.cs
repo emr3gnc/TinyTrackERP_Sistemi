@@ -1,41 +1,46 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 using TinyTrack.Entities;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class VarlikDal
 {
     private const string SelectSql = """
         SELECT varlikID, varliktipi, ad, kapasite, gunlukucret, durum, konum
-        FROM dbo.varlik
+        FROM varlik
         """;
 
-    public List<Varlik> GetAll()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Varlik> TumunuGetir()
     {
-        return DbHelper.ExecuteList($"{SelectSql} ORDER BY ad", Map);
+        return DbHelper.ListeCalistir($"{SelectSql} ORDER BY ad", Esle);
     }
 
-    public Varlik? GetById(string varlikID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public Varlik? IdIleGetir(string varlikID)
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             $"{SelectSql} WHERE varlikID = @varlikID",
-            Map,
-            DbHelper.Parameter("@varlikID", varlikID));
+            Esle,
+            DbHelper.Parametre("@varlikID", varlikID));
     }
 
-    public bool Insert(Varlik varlik)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Ekle(Varlik varlik)
     {
         const string sql = """
-            INSERT INTO dbo.varlik (varlikID, varliktipi, ad, kapasite, gunlukucret, durum, konum)
+            INSERT INTO varlik (varlikID, varliktipi, ad, kapasite, gunlukucret, durum, konum)
             VALUES (@varlikID, @varliktipi, @ad, @kapasite, @gunlukucret, @durum, @konum)
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(varlik)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(varlik)) > 0;
     }
 
-    public bool Update(Varlik varlik)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Guncelle(Varlik varlik)
     {
         const string sql = """
-            UPDATE dbo.varlik
+            UPDATE varlik
             SET varliktipi = @varliktipi,
                 ad = @ad,
                 kapasite = @kapasite,
@@ -44,62 +49,83 @@ public class VarlikDal
                 konum = @konum
             WHERE varlikID = @varlikID
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(varlik)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(varlik)) > 0;
     }
 
-    public bool Delete(string varlikID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Sil(string varlikID)
     {
-        return DbHelper.ExecuteNonQuery(
-            "DELETE FROM dbo.varlik WHERE varlikID = @varlikID",
-            DbHelper.Parameter("@varlikID", varlikID)) > 0;
+        return DbHelper.KomutCalistir(
+            "DELETE FROM varlik WHERE varlikID = @varlikID",
+            DbHelper.Parametre("@varlikID", varlikID)) > 0;
     }
 
-    public bool UpdateDurum(string varlikID, VarlikDurumu durum)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public int RezervasyonSayisiniGetir(string varlikID)
     {
-        return DbHelper.ExecuteNonQuery(
-            "UPDATE dbo.varlik SET durum = @durum WHERE varlikID = @varlikID",
-            DbHelper.Parameter("@durum", durum.ToString()),
-            DbHelper.Parameter("@varlikID", varlikID)) > 0;
+        return DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM rezervasyon WHERE varlikID = @varlikID",
+            DbHelper.Parametre("@varlikID", varlikID));
     }
 
-    public List<Varlik> Search(string q)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public int OperasyonSayisiniGetir(string varlikID)
     {
-        return DbHelper.ExecuteList(
+        return DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM operasyon WHERE varlikID = @varlikID",
+            DbHelper.Parametre("@varlikID", varlikID));
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool DurumuGuncelle(string varlikID, VarlikDurumu durum)
+    {
+        return DbHelper.KomutCalistir(
+            "UPDATE varlik SET durum = @durum WHERE varlikID = @varlikID",
+            DbHelper.Parametre("@durum", durum.ToString()),
+            DbHelper.Parametre("@varlikID", varlikID)) > 0;
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Varlik> Ara(string q)
+    {
+        return DbHelper.ListeCalistir(
             $"""
             {SelectSql}
             WHERE varliktipi LIKE @q OR ad LIKE @q OR durum LIKE @q OR konum LIKE @q
             ORDER BY ad
             """,
-            Map,
-            DbHelper.Parameter("@q", $"%{q}%"));
+            Esle,
+            DbHelper.Parametre("@q", $"%{q}%"));
     }
 
-    private static SqlParameter[] Parameters(Varlik varlik)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static SqliteParameter[] Parametreler(Varlik varlik)
     {
         return
         [
-            DbHelper.Parameter("@varlikID", varlik.VarlikID),
-            DbHelper.Parameter("@varliktipi", varlik.VarlikTipi),
-            DbHelper.Parameter("@ad", varlik.Ad),
-            DbHelper.Parameter("@kapasite", varlik.Kapasite),
-            DbHelper.Parameter("@gunlukucret", varlik.GunlukUcret),
-            DbHelper.Parameter("@durum", varlik.Durum.ToString()),
-            DbHelper.Parameter("@konum", varlik.Konum)
+            DbHelper.Parametre("@varlikID", varlik.VarlikID),
+            DbHelper.Parametre("@varliktipi", varlik.VarlikTipi),
+            DbHelper.Parametre("@ad", varlik.Ad),
+            DbHelper.Parametre("@kapasite", varlik.Kapasite),
+            DbHelper.Parametre("@gunlukucret", varlik.GunlukUcret),
+            DbHelper.Parametre("@durum", varlik.Durum.ToString()),
+            DbHelper.Parametre("@konum", varlik.Konum)
         ];
     }
 
-    private static Varlik Map(SqlDataReader reader)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static Varlik Esle(SqliteDataReader okuyucu)
     {
-        Enum.TryParse(reader.ReadString("durum"), out VarlikDurumu durum);
+        Enum.TryParse(okuyucu.MetinOku("durum"), out VarlikDurumu durum);
         return new Varlik
         {
-            VarlikID = reader.ReadString("varlikID"),
-            VarlikTipi = reader.ReadString("varliktipi"),
-            Ad = reader.ReadString("ad"),
-            Kapasite = reader.ReadInt32("kapasite"),
-            GunlukUcret = reader.ReadDecimal("gunlukucret"),
+            VarlikID = okuyucu.MetinOku("varlikID"),
+            VarlikTipi = okuyucu.MetinOku("varliktipi"),
+            Ad = okuyucu.MetinOku("ad"),
+            Kapasite = okuyucu.TamsayiOku("kapasite"),
+            GunlukUcret = okuyucu.OndalikOku("gunlukucret"),
             Durum = durum,
-            Konum = reader.ReadString("konum")
+            Konum = okuyucu.MetinOku("konum")
         };
     }
 }

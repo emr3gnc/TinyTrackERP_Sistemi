@@ -1,5 +1,6 @@
-namespace TinyTrack.Entities;
+﻿namespace TinyTrack.Entities;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class Rezervasyon
 {
     public string RezervasyonID { get; set; } = string.Empty;

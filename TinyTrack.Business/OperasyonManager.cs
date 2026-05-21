@@ -1,97 +1,106 @@
-using TinyTrack.DataAccess;
+﻿using TinyTrack.DataAccess;
 using TinyTrack.Entities;
 
 namespace TinyTrack.Business;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class OperasyonManager
 {
     private readonly OperasyonDal _operasyonDal = new();
     private readonly VarlikDal _varlikDal = new();
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public List<Operasyon> OperasyonlariGetir()
     {
-        return _operasyonDal.GetAll();
+        return _operasyonDal.TumunuGetir();
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public Operasyon? OperasyonGetir(string operasyonID)
     {
-        return _operasyonDal.GetById(operasyonID);
+        return _operasyonDal.IdIleGetir(operasyonID);
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool OperasyonEkle(Operasyon operasyon)
     {
-        Validate(operasyon);
+        Dogrula(operasyon);
         operasyon.OperasyonID = string.IsNullOrWhiteSpace(operasyon.OperasyonID)
-            ? IdGenerator.NewId("OPR")
+            ? IdGenerator.YeniId("OPR")
             : operasyon.OperasyonID;
-        var result = _operasyonDal.Insert(operasyon);
-        if (result)
+        var sonuc = _operasyonDal.Ekle(operasyon);
+        if (sonuc)
         {
             VarlikDurumunuOperasyonaGoreAyarla(operasyon);
         }
-        return result;
+        return sonuc;
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool OperasyonGuncelle(Operasyon operasyon)
     {
-        Validate(operasyon);
+        Dogrula(operasyon);
         if (string.IsNullOrWhiteSpace(operasyon.OperasyonID))
         {
-            throw new BusinessRuleException("Guncellenecek operasyon secilmelidir.");
+            throw new BusinessRuleException("GÃ¼ncellenecek operasyon seÃ§ilmelidir.");
         }
 
-        var result = _operasyonDal.Update(operasyon);
-        if (result)
+        var sonuc = _operasyonDal.Guncelle(operasyon);
+        if (sonuc)
         {
             VarlikDurumunuOperasyonaGoreAyarla(operasyon);
         }
 
-        return result;
+        return sonuc;
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool OperasyonTamamla(string operasyonID)
     {
-        var operasyon = _operasyonDal.GetById(operasyonID)
-            ?? throw new BusinessRuleException("Operasyon bulunamadi.");
+        var operasyon = _operasyonDal.IdIleGetir(operasyonID)
+            ?? throw new BusinessRuleException("Operasyon bulunamadÄ±.");
         operasyon.Durum = true;
         return OperasyonGuncelle(operasyon);
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool OperasyonSil(string operasyonID)
     {
         if (string.IsNullOrWhiteSpace(operasyonID))
         {
-            throw new BusinessRuleException("Silinecek operasyon secilmelidir.");
+            throw new BusinessRuleException("Silinecek operasyon seÃ§ilmelidir.");
         }
 
-        var operasyon = _operasyonDal.GetById(operasyonID)
-            ?? throw new BusinessRuleException("Operasyon bulunamadi.");
-        var result = _operasyonDal.Delete(operasyonID);
-        if (result && !operasyon.Durum && _operasyonDal.CountOpenByVarlik(operasyon.VarlikID) == 0)
+        var operasyon = _operasyonDal.IdIleGetir(operasyonID)
+            ?? throw new BusinessRuleException("Operasyon bulunamadÄ±.");
+        var sonuc = _operasyonDal.Sil(operasyonID);
+        if (sonuc && !operasyon.Durum && _operasyonDal.VarligaGoreAcikSayisiniGetir(operasyon.VarlikID) == 0)
         {
-            _varlikDal.UpdateDurum(operasyon.VarlikID, VarlikDurumu.Musait);
+            _varlikDal.DurumuGuncelle(operasyon.VarlikID, VarlikDurumu.Musait);
         }
 
-        return result;
+        return sonuc;
     }
 
-    private static void Validate(Operasyon operasyon)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void Dogrula(Operasyon operasyon)
     {
         if (string.IsNullOrWhiteSpace(operasyon.VarlikID))
         {
-            throw new BusinessRuleException("Operasyon icin varlik secilmelidir.");
+            throw new BusinessRuleException("Operasyon iÃ§in varlÄ±k seÃ§ilmelidir.");
         }
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     private void VarlikDurumunuOperasyonaGoreAyarla(Operasyon operasyon)
     {
         if (operasyon.Durum)
         {
-            _varlikDal.UpdateDurum(operasyon.VarlikID, VarlikDurumu.Musait);
+            _varlikDal.DurumuGuncelle(operasyon.VarlikID, VarlikDurumu.Musait);
             return;
         }
 
-        _varlikDal.UpdateDurum(
+        _varlikDal.DurumuGuncelle(
             operasyon.VarlikID,
             operasyon.OperasyonTipi == OperasyonTipi.Bakim ? VarlikDurumu.Bakimda : VarlikDurumu.Temizlikte);
     }

@@ -1,11 +1,13 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Globalization;
+using ClosedXML.Excel;
 using TinyTrack.Business;
 using TinyTrack.Entities;
 
 namespace TinyTrack.WinForms;
 
-public class MainForm : Form
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
+public partial class MainForm : Form
 {
     private const string CurrentUserId = "USR-001";
 
@@ -14,20 +16,29 @@ public class MainForm : Form
     private readonly Color _ink = Color.FromArgb(16, 24, 40);
     private readonly Color _muted = Color.FromArgb(102, 112, 133);
     private readonly Color _line = Color.FromArgb(229, 234, 242);
-    private readonly Color _green = Color.FromArgb(0, 153, 112);
-    private readonly Color _greenSoft = Color.FromArgb(228, 248, 241);
+    private readonly Color _green = ColorTranslator.FromHtml("#6d47d5");
+    private readonly Color _greenSoft = ColorTranslator.FromHtml("#bc84fb");
+    private readonly Color _danger = ColorTranslator.FromHtml("#bf0a1f");
     private readonly Color _navy = Color.FromArgb(17, 24, 39);
     private readonly Color _yellow = Color.FromArgb(249, 181, 38);
     private readonly Color _blue = Color.FromArgb(37, 99, 235);
     private readonly Color _coral = Color.FromArgb(239, 68, 68);
     private readonly Color _violet = Color.FromArgb(124, 58, 237);
     private readonly Color _orange = Color.FromArgb(245, 158, 11);
+    private readonly Color _calendarAvailable = ColorTranslator.FromHtml("#42992c");
+    private readonly Color _calendarOperation = ColorTranslator.FromHtml("#96800f");
+    private readonly Color _calendarOccupied = ColorTranslator.FromHtml("#cf2732");
 
-    private readonly Panel _headerPanel = new();
+    private readonly Panel _sidebarPanel = new();
     private readonly Panel _contentPanel = new();
     private readonly Label _headerUserLabel = new();
     private readonly Dictionary<string, Button> _navButtons = [];
     private DateTime _selectedCalendarDate = DateTime.Today;
+    private DateTime _reservationWeekStart = HaftaBaslangici(DateTime.Today);
+    private DateTime _newReservationCalendarMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private string _currentPageKey = "Dashboard";
+    private bool _isRenderingPage;
+    private int _lastContentWidth;
 
     private readonly MusteriManager _musteriManager = new();
     private readonly VarlikManager _varlikManager = new();
@@ -38,37 +49,34 @@ public class MainForm : Form
     private readonly ProfilManager _profilManager = new();
     private readonly YoneticiManager _yoneticiManager = new();
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public MainForm()
     {
-        Text = "TinyTrack ERP";
-        MinimumSize = new Size(1180, 760);
-        Size = new Size(1180, 820);
-        StartPosition = FormStartPosition.CenterScreen;
-        BackColor = _background;
-        Font = new Font("Segoe UI", 10F, FontStyle.Regular);
+        InitializeComponent();
         CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
         CultureInfo.CurrentUICulture = new CultureInfo("tr-TR");
 
-        BuildShell();
-        ShowDashboard();
+        KabuguOlustur();
+        PaneliGoster();
     }
 
-    private void BuildShell()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void KabuguOlustur()
     {
-        _headerPanel.Dock = DockStyle.Top;
-        _headerPanel.Height = 74;
-        _headerPanel.BackColor = Color.FromArgb(252, 254, 255);
-        _headerPanel.Padding = new Padding(22, 12, 22, 12);
-        _headerPanel.Paint += (_, e) =>
+        _sidebarPanel.Dock = DockStyle.Left;
+        _sidebarPanel.Width = 238;
+        _sidebarPanel.BackColor = _greenSoft;
+        _sidebarPanel.Padding = new Padding(18, 18, 18, 18);
+        _sidebarPanel.Paint += (_, e) =>
         {
             using var pen = new Pen(_line);
-            e.Graphics.DrawLine(pen, 0, _headerPanel.Height - 1, _headerPanel.Width, _headerPanel.Height - 1);
+            e.Graphics.DrawLine(pen, _sidebarPanel.Width - 1, 0, _sidebarPanel.Width - 1, _sidebarPanel.Height);
         };
 
         var logo = new PictureBox
         {
-            Left = 22,
-            Top = 13,
+            Left = 20,
+            Top = 22,
             Width = 48,
             Height = 48,
             BackColor = Color.Transparent,
@@ -85,378 +93,467 @@ public class MainForm : Form
             logo.BackColor = _green;
         }
 
-        _headerPanel.Controls.Add(logo);
+        _sidebarPanel.Controls.Add(logo);
 
         var brand = new Label
         {
             Text = "TinyTrack",
             AutoSize = false,
-            Width = 155,
+            Width = 150,
             Height = 50,
-            Left = 78,
-            Top = 12,
+            Left = 72,
+            Top = 21,
             TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Segoe UI", 18F, FontStyle.Bold),
-            ForeColor = _ink
+            Font = new Font("Segoe UI", 16F, FontStyle.Bold),
+            ForeColor = Color.White
         };
-        _headerPanel.Controls.Add(brand);
+        _sidebarPanel.Controls.Add(brand);
 
         _headerUserLabel.AutoSize = false;
-        _headerUserLabel.Width = 148;
-        _headerUserLabel.Height = 50;
-        _headerUserLabel.Left = 1280;
-        _headerUserLabel.Top = 12;
-        _headerUserLabel.TextAlign = ContentAlignment.MiddleRight;
+        _headerUserLabel.Width = 198;
+        _headerUserLabel.Height = 40;
+        _headerUserLabel.Left = 20;
+        _headerUserLabel.Top = 724;
+        _headerUserLabel.TextAlign = ContentAlignment.MiddleLeft;
         _headerUserLabel.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-        _headerUserLabel.ForeColor = _muted;
-        _headerUserLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _headerUserLabel.ForeColor = Color.White;
+        _headerUserLabel.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
         _headerUserLabel.AutoEllipsis = true;
-        _headerPanel.Controls.Add(_headerUserLabel);
-        RefreshHeaderUser();
+        _sidebarPanel.Controls.Add(_headerUserLabel);
+        BaslikKullanicisiniYenile();
 
         var nav = new FlowLayoutPanel
         {
-            Left = 214,
-            Top = 16,
-            Width = 880,
-            Height = 46,
-            FlowDirection = FlowDirection.LeftToRight,
+            Left = 18,
+            Top = 104,
+            Width = 202,
+            Height = 420,
+            FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
-            Padding = new Padding(0, 2, 0, 0),
-            BackColor = Color.White,
+            Padding = new Padding(0),
+            BackColor = _greenSoft,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
-        _headerPanel.Controls.Add(nav);
+        _sidebarPanel.Controls.Add(nav);
 
-        void LayoutHeader()
-        {
-            var width = Math.Max(1180, _headerPanel.ClientSize.Width);
-            _headerUserLabel.Left = width - _headerUserLabel.Width - 22;
-            nav.Left = brand.Right + 12;
-            nav.Width = Math.Max(710, _headerUserLabel.Left - nav.Left - 18);
-        }
-
-        _headerPanel.Resize += (_, _) => LayoutHeader();
-        LayoutHeader();
-
-        AddNavButton(nav, "Dashboard", "PANEL", 90, ShowDashboard);
-        AddNavButton(nav, "Rezervasyonlar", "REZERVASYON", 124, ShowReservations);
-        AddNavButton(nav, "Varliklar", "VARLIKLAR", 106, ShowAssets);
-        AddNavButton(nav, "Musteriler", "MUSTERILER", 116, ShowCustomers);
-        AddNavButton(nav, "Operasyon", "OPERASYON", 114, ShowOperations);
-        AddNavButton(nav, "Finans", "FINANS", 80, ShowFinance);
-        AddNavButton(nav, "Ayarlar", "AYARLAR", 92, ShowSettings);
+        GezintiDugmesiEkle(nav, "Dashboard", "Panel", PaneliGoster);
+        GezintiDugmesiEkle(nav, "YeniRezervasyon", "Yeni Rezervasyon", YeniRezervasyonuGoster);
+        GezintiDugmesiEkle(nav, "Rezervasyonlar", "Takvim", RezervasyonlariGoster);
+        GezintiDugmesiEkle(nav, "Finans", "Ödeme ve Çıkış", FinansiGoster);
+        GezintiDugmesiEkle(nav, "Varliklar", "Varlıklar", VarliklariGoster);
+        GezintiDugmesiEkle(nav, "Musteriler", "Müşteriler", MusterileriGoster);
+        GezintiDugmesiEkle(nav, "Operasyon", "Operasyon", OperasyonlariGoster);
+        GezintiDugmesiEkle(nav, "Ayarlar", "Ayarlar", AyarlariGoster);
 
         _contentPanel.Dock = DockStyle.Fill;
         _contentPanel.AutoScroll = true;
         _contentPanel.BackColor = _background;
-        _contentPanel.Padding = new Padding(36, 28, 36, 36);
+        _contentPanel.Padding = new Padding(30, 28, 30, 36);
+        _contentPanel.Resize += (_, _) => GerekirseGuncelSayfayiYenidenCiz();
         Controls.Add(_contentPanel);
-        Controls.Add(_headerPanel);
+        Controls.Add(_sidebarPanel);
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     private Kullanici GetCurrentUser()
     {
         return _profilManager.KullaniciProfilBilgileriniGetir(CurrentUserId) ?? new Kullanici
         {
             KullaniciID = CurrentUserId,
-            AdSoyad = "Yonetici",
+            AdSoyad = "Yönetici",
             Email = "admin@tinytrack.local",
-            Rol = "Yonetici"
+            Rol = "Yönetici"
         };
     }
 
-    private void RefreshHeaderUser()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void BaslikKullanicisiniYenile()
     {
         try
         {
             var user = GetCurrentUser();
-            _headerUserLabel.Text = string.IsNullOrWhiteSpace(user.AdSoyad) ? "Yonetici" : user.AdSoyad;
+            _headerUserLabel.Text = string.IsNullOrWhiteSpace(user.AdSoyad) ? "Yönetici" : user.AdSoyad;
         }
         catch
         {
-            _headerUserLabel.Text = "Yonetici";
+            _headerUserLabel.Text = "Yönetici";
         }
     }
 
-    private void AddNavButton(FlowLayoutPanel nav, string key, string text, int width, Action action)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void GezintiDugmesiEkle(FlowLayoutPanel nav, string key, string text, Action islem)
     {
-        var button = new Button
+        var dugme = new Button
         {
             Text = text,
-            Width = width,
-            Height = 42,
-            Margin = new Padding(1, 0, 1, 0),
+            Width = 202,
+            Height = 44,
+            Margin = new Padding(0, 0, 0, 8),
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
+            BackColor = _greenSoft,
             ForeColor = _muted,
-            Font = new Font("Segoe UI", 8.4F, FontStyle.Bold),
+            Font = new Font("Segoe UI", 10F, FontStyle.Bold),
             Cursor = Cursors.Hand,
-            TabStop = false
+            TabStop = false,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(16, 0, 0, 0)
         };
-        button.FlatAppearance.BorderSize = 0;
-        button.Click += (_, _) => action();
-        _navButtons[key] = button;
-        nav.Controls.Add(button);
+        dugme.FlatAppearance.BorderSize = 0;
+        dugme.Click += (_, _) => islem();
+        _navButtons[key] = dugme;
+        nav.Controls.Add(dugme);
     }
 
-    private void SetActiveNav(string key)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void AktifGezintiyiAyarla(string key)
     {
         foreach (var item in _navButtons)
         {
-            item.Value.BackColor = item.Key == key ? _greenSoft : Color.White;
-            item.Value.ForeColor = item.Key == key ? _green : _muted;
+            item.Value.BackColor = item.Key == key ? _green : _greenSoft;
+            item.Value.ForeColor = Color.White;
         }
     }
 
-    private void PreparePage(string key)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void SayfayiHazirla(string key)
     {
-        SetActiveNav(key);
+        _currentPageKey = key;
+        _isRenderingPage = true;
+        AktifGezintiyiAyarla(key);
         _contentPanel.SuspendLayout();
         _contentPanel.Controls.Clear();
         _contentPanel.AutoScrollPosition = Point.Empty;
     }
 
-    private void FinishPage()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void SayfayiBitir()
     {
+        _lastContentWidth = IcerikGenisligi();
+        _isRenderingPage = false;
         _contentPanel.ResumeLayout();
     }
 
-    private void ShowDashboard()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void GerekirseGuncelSayfayiYenidenCiz()
     {
-        PreparePage("Dashboard");
+        if (_isRenderingPage || Math.Abs(IcerikGenisligi() - _lastContentWidth) < 48)
+        {
+            return;
+        }
+
+        switch (_currentPageKey)
+        {
+            case "Rezervasyonlar":
+                RezervasyonlariGoster();
+                break;
+            case "YeniRezervasyon":
+                YeniRezervasyonuGoster();
+                break;
+            case "Varliklar":
+                VarliklariGoster();
+                break;
+            case "Musteriler":
+                MusterileriGoster();
+                break;
+            case "Operasyon":
+                OperasyonlariGoster();
+                break;
+            case "Finans":
+                FinansiGoster();
+                break;
+            case "Ayarlar":
+                AyarlariGoster();
+                break;
+            default:
+                PaneliGoster();
+                break;
+        }
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void PaneliGoster()
+    {
+        SayfayiHazirla("Dashboard");
         try
         {
             var dashboard = _yoneticiManager.DashboardVeriOzetVerileriniGetir();
             var user = GetCurrentUser();
-            AddHeader($"Gunaydin, {ShortName(user.AdSoyad)}", DateTime.Today.ToString("dd MMMM dddd, yyyy"), null, null);
+            BaslikEkle($"Günaydin, {KisaAd(user.AdSoyad)}", DateTime.Today.ToString("dd MMMM dddd, yyyy"), null, null);
+            var wideStats = IcerikGenisligi() >= 1080;
+            var statsHeight = wideStats ? 145 : 280;
 
             var stats = new FlowLayoutPanel
             {
                 Left = 0,
                 Top = 126,
-                Width = ContentWidth(),
-                Height = 145,
+                Width = IcerikGenisligi(),
+                Height = statsHeight,
                 BackColor = _background,
                 FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false
+                WrapContents = true
             };
             _contentPanel.Controls.Add(stats);
 
-            stats.Controls.Add(CreateStatCard("GIRISLER", dashboard.BugunkuGiris.ToString("00"), "Bugun", _green));
-            stats.Controls.Add(CreateStatCard("CIKISLAR", dashboard.BugunkuCikis.ToString("00"), "Bugun", _blue));
-            stats.Controls.Add(CreateStatCard("TEMIZLIKTE", dashboard.TemizliktekiVarlik.ToString("00"), "Birim", _coral));
-            stats.Controls.Add(CreateStatCard("AKTIF REZ.", dashboard.AktifRezervasyon.ToString(), "Kayit", _navy));
+            stats.Controls.Add(IstatistikKartiOlustur("GİRİŞLER", dashboard.BugunkuGiris.ToString("00"), "Bugün", _green));
+            stats.Controls.Add(IstatistikKartiOlustur("ÇIKIŞLAR", dashboard.BugunkuCikis.ToString("00"), "Bugün", _blue));
+            stats.Controls.Add(IstatistikKartiOlustur("TEMİZLİKTE", dashboard.TemizliktekiVarlik.ToString("00"), "Birim", _coral));
+            stats.Controls.Add(IstatistikKartiOlustur("AKTIF REZ.", dashboard.AktifRezervasyon.ToString(), "Kayit", _navy));
 
-            var chart = CreateCard(0, 300, Math.Min(720, ContentWidth()), 215, _blue);
+            var chartTop = 126 + statsHeight + 30;
+            var chart = KartOlustur(0, chartTop, Math.Min(720, IcerikGenisligi()), 215, _blue);
             _contentPanel.Controls.Add(chart);
-            chart.Controls.Add(CreateLabel("AYLIK GELIR", 18, 22, 14, FontStyle.Bold, _muted));
-            chart.Controls.Add(CreateLabel(dashboard.AylikGelir.ToString("C0"), 18, 48, 25, FontStyle.Bold, _ink));
-            chart.Controls.Add(CreateBadge($"%{Math.Max(0, dashboard.DolulukOrani):0.0} doluluk", chart.Width - 145, 24, 120, _greenSoft, _green));
-            chart.Paint += (_, e) => DrawRevenueBars(e.Graphics, chart.ClientRectangle);
+            chart.Controls.Add(EtiketOlustur("AYLIK GELIR", 18, 22, 14, FontStyle.Bold, _muted));
+            chart.Controls.Add(EtiketOlustur(dashboard.AylikGelir.ToString("C0"), 18, 48, 25, FontStyle.Bold, _ink));
+            chart.Controls.Add(RozetOlustur($"%{Math.Max(0, dashboard.DolulukOrani):0.0} doluluk", chart.Width - 145, 24, 120, _greenSoft, _green));
+            chart.Paint += (_, e) => GelirCubuklariniCiz(e.Graphics, chart.ClientRectangle);
 
-            var quick = CreateCard(0, 540, Math.Min(720, ContentWidth()), 160, _navy);
+            var quickTop = chartTop + 240;
+            var quick = KartOlustur(0, quickTop, Math.Min(720, IcerikGenisligi()), 160, _navy);
             _contentPanel.Controls.Add(quick);
-            quick.Controls.Add(CreateLabel("HIZLI ISLEMLER", 22, 18, 14, FontStyle.Bold, _ink));
-            quick.Controls.Add(CreateActionButton("Yeni Rezervasyon", 22, 58, 280, _navy, ShowReservations));
-            quick.Controls.Add(CreateActionButton("Varlik Durumu", 322, 58, 280, Color.White, ShowAssets, _ink));
+            quick.Controls.Add(EtiketOlustur("HIZLI ISLEMLER", 22, 18, 14, FontStyle.Bold, _ink));
+            quick.Controls.Add(IslemDugmesiOlustur("Yeni Rezervasyon", 22, 58, 280, _navy, YeniRezervasyonuGoster));
+            quick.Controls.Add(IslemDugmesiOlustur("Varlık Durumu", 322, 58, 280, Color.White, VarliklariGoster, _ink));
 
-            var wideLayout = ContentWidth() >= 1180;
+            var wideLayout = IcerikGenisligi() >= 1180;
             var nextLeft = wideLayout ? 760 : 0;
-            var nextTop = wideLayout ? 300 : 725;
-            var nextWidth = wideLayout ? Math.Max(360, ContentWidth() - 760) : Math.Min(720, ContentWidth());
-            var next = CreateCard(nextLeft, nextTop, nextWidth, 400, _green);
+            var nextTop = wideLayout ? chartTop : quickTop + 185;
+            var nextWidth = wideLayout ? Math.Max(360, IcerikGenisligi() - 760) : Math.Min(720, IcerikGenisligi());
+            var next = KartOlustur(nextLeft, nextTop, nextWidth, 400, _green);
             _contentPanel.Controls.Add(next);
-            next.Controls.Add(CreateLabel("SIRADAKI GIRIS", 22, 22, 14, FontStyle.Bold, _green));
-            next.Controls.Add(CreateLabel(dashboard.SiradakiGiris, 22, 58, 18, FontStyle.Bold, _ink, next.Width - 44));
-            next.Controls.Add(CreateLabel("Takvim ve operasyon ekranlarindan bugunku sureci kontrol edebilirsiniz.", 22, 100, 10.5F, FontStyle.Regular, _muted, next.Width - 44));
-            next.Controls.Add(CreateActionButton("Rezervasyonlari Ac", 22, 155, 230, _green, ShowReservations));
+            next.Controls.Add(EtiketOlustur("SIRADAKI GIRIS", 22, 22, 14, FontStyle.Bold, _green));
+            next.Controls.Add(EtiketOlustur(dashboard.SiradakiGiris, 22, 58, 18, FontStyle.Bold, _ink, next.Width - 44));
+            next.Controls.Add(EtiketOlustur("Takvim ve operasyon ekranlarindan bugunku sureci kontrol edebilirsiniz.", 22, 100, 10.5F, FontStyle.Regular, _muted, next.Width - 44));
+            next.Controls.Add(IslemDugmesiOlustur("Rezervasyonları Aç", 22, 155, 230, _green, RezervasyonlariGoster));
         }
         catch (Exception ex)
         {
-            ShowPageError(ex);
+            SayfaHatasiniGoster(ex);
         }
         finally
         {
-            FinishPage();
+            SayfayiBitir();
         }
     }
 
-    private void ShowReservations()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void RezervasyonlariGoster()
     {
-        PreparePage("Rezervasyonlar");
+        SayfayiHazirla("Rezervasyonlar");
         try
         {
-            AddHeader("Takvim / Rezervasyonlar", "Musaitlik durumunu ve konaklamalari yonetin.", "YENI REZERVASYON", () => MessageBox.Show("Formu doldurup Kaydet'e basin.", "TinyTrack"));
-            var form = CreateCard(0, 342, 430, 465, _green);
-            _contentPanel.Controls.Add(form);
-            form.Controls.Add(CreateLabel("Hizli Rezervasyon Formu", 24, 24, 18, FontStyle.Bold, _ink, 390));
+            BaslikEkle("Takvim", "Haftalık takvimden gün seçerek rezervasyonları inceleyin.", null, null);
+            var calendarWidth = Math.Min(920, IcerikGenisligi());
+            var calendarLeft = Math.Max(0, (IcerikGenisligi() - calendarWidth) / 2);
+            var gridWidth = Math.Min(1000, IcerikGenisligi());
+            var gridLeft = Math.Max(0, (IcerikGenisligi() - gridWidth) / 2);
 
-            var cmbMusteri = AddCombo<Musteri>(form, "Musteri", 24, 100, 370, _musteriManager.MusterileriGetir(), "AdSoyad", "MusteriID");
-            var cmbVarlik = AddCombo<Varlik>(form, "Varlik", 24, 168, 370, _varlikManager.VarliklariGetir(), "Ad", "VarlikID");
-            var dtBas = AddDate(form, "Giris Tarihi", 24, 236, 175, DateTime.Today);
-            var dtSon = AddDate(form, "Cikis Tarihi", 219, 236, 175, DateTime.Today.AddDays(1));
-            var totalLabel = CreateLabel("Toplam: 0 TL", 24, 302, 13, FontStyle.Bold, _green, 370);
-            form.Controls.Add(totalLabel);
+            RezervasyonHaftaTakvimiEkle(calendarLeft, 126, calendarWidth, selectedDate =>
+            {
+                _selectedCalendarDate = selectedDate.Date;
+                RezervasyonlariGoster();
+            });
 
-            var grid = CreateGrid<Rezervasyon>(450, 342, ContentWidth() - 450, 465);
-            _contentPanel.Controls.Add(grid);
+            var dayTitle = EtiketOlustur($"{_selectedCalendarDate:dd MMMM yyyy dddd} rezervasyonları", gridLeft, 330, 18, FontStyle.Bold, _ink, gridWidth);
+            _contentPanel.Controls.Add(dayTitle);
 
+            var tablo = TabloOlustur<Rezervasyon>(gridLeft, 380, gridWidth, 430);
+            _contentPanel.Controls.Add(tablo);
             void RefreshGrid()
             {
-                grid.DataSource = new BindingList<Rezervasyon>(_rezervasyonManager.RezervasyonlariGetir());
-                HideColumns(grid, "MusteriID", "VarlikID", "KayitTarihi");
-                SetColumnHeaders(grid,
+                var selectedDate = _selectedCalendarDate.Date;
+                var rezervasyonlar = _rezervasyonManager.RezervasyonlariGetir()
+                    .Where(r => r.Durum == RezervasyonDurumu.Aktif && RezervasyonTarihiKapsar(r, selectedDate))
+                    .OrderBy(r => r.BasTarih)
+                    .ToList();
+                tablo.DataSource = new BindingList<Rezervasyon>(rezervasyonlar);
+                SutunlariGizle(tablo, "MusteriID", "VarlikID", "KayitTarihi");
+                SutunBasliklariniAyarla(tablo,
                     ("RezervasyonID", "Rezervasyon"),
-                    ("BasTarih", "Giris"),
-                    ("SonTarih", "Cikis"),
+                    ("BasTarih", "Giriş"),
+                    ("SonTarih", "Çıkış"),
                     ("ToplamUcret", "Toplam"),
-                    ("MusteriAdSoyad", "Musteri"),
-                    ("VarlikAdi", "Varlik"),
+                    ("MusteriAdSoyad", "Müşteri"),
+                    ("VarlikAdi", "Varlık"),
                     ("GeceSayisi", "Gece"));
             }
 
+            RefreshGrid();
+        }
+        catch (Exception ex)
+        {
+            SayfaHatasiniGoster(ex);
+        }
+        finally
+        {
+            SayfayiBitir();
+        }
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void YeniRezervasyonuGoster()
+    {
+        SayfayiHazirla("YeniRezervasyon");
+        try
+        {
+            BaslikEkle("Yeni Rezervasyon", "Müşteri bilgisi, varlık ve tarih aralığıyla yeni konaklama oluşturun.", null, null);
+            var wideLayout = IcerikGenisligi() >= 1040;
+            var formWidth = Math.Min(430, IcerikGenisligi());
+            var calendarLeft = wideLayout ? formWidth + 24 : 0;
+            var calendarTop = wideLayout ? 126 : 900;
+            var calendarWidth = wideLayout ? Math.Max(520, IcerikGenisligi() - calendarLeft) : IcerikGenisligi();
+
+            var form = KartOlustur(0, 126, formWidth, 635, _green);
+            _contentPanel.Controls.Add(form);
+            form.Controls.Add(EtiketOlustur("Rezervasyon Formu", 24, 24, 18, FontStyle.Bold, _ink, 390));
+
+            var cmbVarlik = SecimKutusuEkle<Varlik>(form, "Varlık", 24, 100, 370, _varlikManager.VarliklariGetir(), "Ad", "VarlikID");
+            var dtBas = TarihAlaniEkle(form, "Giriş Tarihi", 24, 168, 175, _selectedCalendarDate);
+            var dtSon = TarihAlaniEkle(form, "Çıkış Tarihi", 219, 168, 175, _selectedCalendarDate.AddDays(1));
+            var totalLabel = EtiketOlustur("Toplam: 0 TL", 24, 232, 13, FontStyle.Bold, _green, 370);
+            form.Controls.Add(totalLabel);
+            form.Controls.Add(EtiketOlustur("Müşteri Bilgileri", 24, 282, 16, FontStyle.Bold, _ink, 370));
+            var txtMusteriAd = MetinKutusuEkle(form, "Ad", 24, 348, 170);
+            var txtMusteriSoyad = MetinKutusuEkle(form, "Soyad", 218, 348, 170);
+            var txtMusteriKimlik = MetinKutusuEkle(form, "T.C. Kimlik No", 24, 418, 364);
+            var txtMusteriTelefon = MetinKutusuEkle(form, "Telefon", 24, 488, 170);
+            var cmbMusteriIl = SecimKutusuEkle<string>(form, "İl", 218, 488, 170, TurkSehirleri(), null, null);
+            var cmbMusteriIlce = SecimKutusuEkle<string>(form, "İlçe", 24, 558, 170, IlceleriGetir(cmbMusteriIl.Text), null, null);
+            var txtMusteriPosta = MetinKutusuEkle(form, "Posta Kodu", 218, 558, 170);
+            var txtMusteriAcikAdres = MetinKutusuEkle(form, "Açık Adres", 24, 628, 364);
+            cmbMusteriIl.SelectedIndexChanged += (_, _) => IlceleriYenidenBagla(cmbMusteriIlce, cmbMusteriIl.Text);
             void RefreshTotal()
             {
                 if (cmbVarlik.SelectedValue is string varlikID)
                 {
-                    Safe(() =>
+                    GuvenliCalistir(() =>
                     {
                         totalLabel.Text = $"Toplam: {_rezervasyonManager.ToplamUcretHesapla(varlikID, dtBas.Value, dtSon.Value, 0):C0}";
                     });
                 }
             }
+            void RefreshAssetCalendar()
+            {
+                var varlikID = cmbVarlik.SelectedValue?.ToString() ?? string.Empty;
+                VarlikTakvimiEkle(calendarLeft, calendarTop, calendarWidth, varlikID, tarih =>
+                {
+                    dtBas.Value = tarih;
+                    if (dtSon.Value.Date <= tarih.Date)
+                    {
+                        dtSon.Value = tarih.AddDays(1);
+                    }
+                    RefreshTotal();
+                });
+            }
 
             dtBas.ValueChanged += (_, _) => RefreshTotal();
             dtSon.ValueChanged += (_, _) => RefreshTotal();
-            cmbVarlik.SelectedIndexChanged += (_, _) => RefreshTotal();
-
-            AddCalendarStrip(0, 126, selectedDate =>
+            cmbVarlik.SelectedIndexChanged += (_, _) =>
             {
-                dtBas.Value = selectedDate;
-                if (dtSon.Value.Date <= selectedDate.Date)
-                {
-                    dtSon.Value = selectedDate.AddDays(1);
-                }
                 RefreshTotal();
-            });
-            AddLegend(0, 292);
-
-            var selectedID = string.Empty;
-            var selectedStatus = RezervasyonDurumu.Aktif;
-            grid.SelectionChanged += (_, _) =>
+                RefreshAssetCalendar();
+            };
+            txtMusteriKimlik.Leave += (_, _) =>
             {
-                if (grid.CurrentRow?.DataBoundItem is not Rezervasyon r)
+                var mevcut = _musteriManager.MusteriKimlikNoIleGetir(txtMusteriKimlik.Text);
+                if (mevcut is null)
                 {
                     return;
                 }
 
-                selectedID = r.RezervasyonID;
-                cmbMusteri.SelectedValue = r.MusteriID;
-                cmbVarlik.SelectedValue = r.VarlikID;
-                dtBas.Value = r.BasTarih;
-                dtSon.Value = r.SonTarih;
-                selectedStatus = r.Durum;
-                totalLabel.Text = $"Toplam: {r.ToplamUcret:C0}";
+                txtMusteriAd.Text = mevcut.Ad;
+                txtMusteriSoyad.Text = mevcut.Soyad;
+                txtMusteriTelefon.Text = mevcut.Telefon;
+                SecimKutusuDegeriniSec(cmbMusteriIl, mevcut.Il);
+                IlceleriYenidenBagla(cmbMusteriIlce, cmbMusteriIl.Text);
+                SecimKutusuDegeriniSec(cmbMusteriIlce, mevcut.Ilce);
+                txtMusteriAcikAdres.Text = string.IsNullOrWhiteSpace(mevcut.AcikAdres) ? mevcut.Adres : mevcut.AcikAdres;
+                txtMusteriPosta.Text = mevcut.PostaKodu;
             };
 
-            form.Controls.Add(CreateActionButton("Kaydet", 24, 346, 170, _green, () => Safe(() =>
+            form.Height = 735;
+            form.Controls.Add(IslemDugmesiOlustur("Kaydet", 24, 678, 170, _green, () => GuvenliCalistir(() =>
             {
+                var musteri = RezervasyonMusterisiniBulVeyaOlustur(
+                    txtMusteriAd.Text,
+                    txtMusteriSoyad.Text,
+                    txtMusteriKimlik.Text,
+                    txtMusteriTelefon.Text,
+                    cmbMusteriIl.Text,
+                    cmbMusteriIlce.Text,
+                    txtMusteriAcikAdres.Text,
+                    txtMusteriPosta.Text);
                 _rezervasyonManager.RezervasyonEkle(new Rezervasyon
                 {
-                    MusteriID = cmbMusteri.SelectedValue?.ToString() ?? string.Empty,
+                    MusteriID = musteri.MusteriID,
                     VarlikID = cmbVarlik.SelectedValue?.ToString() ?? string.Empty,
                     BasTarih = dtBas.Value,
                     SonTarih = dtSon.Value
                 });
-                RefreshGrid();
-                RefreshTotal();
+                _selectedCalendarDate = dtBas.Value.Date;
+                RezervasyonlariGoster();
             }, "Rezervasyon kaydedildi.")));
 
-            form.Controls.Add(CreateActionButton("Guncelle", 214, 346, 170, Color.White, () => Safe(() =>
-            {
-                _rezervasyonManager.RezervasyonGuncelle(new Rezervasyon
-                {
-                    RezervasyonID = selectedID,
-                    MusteriID = cmbMusteri.SelectedValue?.ToString() ?? string.Empty,
-                    VarlikID = cmbVarlik.SelectedValue?.ToString() ?? string.Empty,
-                    BasTarih = dtBas.Value,
-                    SonTarih = dtSon.Value,
-                    Durum = selectedStatus
-                });
-                RefreshGrid();
-            }, "Rezervasyon guncellendi."), _ink));
-
-            form.Controls.Add(CreateActionButton("Iptal Et", 24, 392, 115, Color.FromArgb(249, 232, 232), () => Safe(() =>
-            {
-                _rezervasyonManager.RezervasyonIptal(selectedID);
-                RefreshGrid();
-            }, "Rezervasyon iptal edildi."), Color.FromArgb(190, 45, 45)));
-
-            form.Controls.Add(CreateActionButton("Cikis", 155, 392, 115, _yellow, () => Safe(() =>
-            {
-                _rezervasyonManager.CikisIslemiBaslat(selectedID);
-                RefreshGrid();
-            }, "Cikis islemi tamamlandi, temizlik operasyonu basladi."), _ink));
-
-            form.Controls.Add(CreateActionButton("Sil", 285, 392, 100, Color.White, () =>
-            {
-                if (Confirm("Secili rezervasyon silinsin mi?"))
-                {
-                    Safe(() =>
-                    {
-                        _rezervasyonManager.RezervasyonSil(selectedID);
-                        RefreshGrid();
-                    }, "Rezervasyon silindi.");
-                }
-            }, _ink));
-
-            RefreshGrid();
+            form.Controls.Add(IslemDugmesiOlustur("Takvime Dön", 214, 678, 170, Color.White, RezervasyonlariGoster, _ink));
             RefreshTotal();
+            RefreshAssetCalendar();
         }
         catch (Exception ex)
         {
-            ShowPageError(ex);
+            SayfaHatasiniGoster(ex);
         }
         finally
         {
-            FinishPage();
+            SayfayiBitir();
         }
     }
 
-    private void ShowCustomers()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void MusterileriGoster()
     {
-        PreparePage("Musteriler");
+        SayfayiHazirla("Musteriler");
         try
         {
-            AddHeader("Musteriler", "Kimlik, iletisim ve konaklama musteri kayitlari.", null, null);
+            BaslikEkle("Müşteriler", "Kimlik, iletişim ve konaklama müşteri kayıtları.", null, null);
 
-            var form = CreateCard(0, 126, 420, 500, _blue);
+            var wideLayout = IcerikGenisligi() >= 940;
+            var formWidth = Math.Min(420, IcerikGenisligi());
+            var gridLeft = wideLayout ? formWidth + 20 : 0;
+            var gridTop = wideLayout ? 126 : 800;
+            var gridWidth = wideLayout ? IcerikGenisligi() - gridLeft : IcerikGenisligi();
+
+            var form = KartOlustur(0, 126, formWidth, 500, _blue);
             _contentPanel.Controls.Add(form);
-            form.Controls.Add(CreateLabel("Musteri Bilgileri", 24, 24, 20, FontStyle.Bold, _ink, 364));
-            var txtAd = AddTextBox(form, "Ad", 24, 100, 170);
-            var txtSoyad = AddTextBox(form, "Soyad", 218, 100, 170);
-            var txtKimlik = AddTextBox(form, "T.C. Kimlik No", 24, 170, 364);
-            var txtTelefon = AddTextBox(form, "Telefon", 24, 240, 364);
-            var txtAdres = AddTextBox(form, "Adres", 24, 310, 364);
-            var grid = CreateGrid<Musteri>(440, 126, ContentWidth() - 440, 500);
-            _contentPanel.Controls.Add(grid);
+            form.Height = 650;
+            form.Controls.Add(EtiketOlustur("Müşteri Bilgileri", 24, 24, 20, FontStyle.Bold, _ink, 364));
+            var txtAd = MetinKutusuEkle(form, "Ad", 24, 100, 170);
+            var txtSoyad = MetinKutusuEkle(form, "Soyad", 218, 100, 170);
+            var txtKimlik = MetinKutusuEkle(form, "T.C. Kimlik No", 24, 170, 364);
+            var txtTelefon = MetinKutusuEkle(form, "Telefon", 24, 240, 364);
+            var cmbIl = SecimKutusuEkle<string>(form, "İl", 24, 310, 170, TurkSehirleri(), null, null);
+            var cmbIlce = SecimKutusuEkle<string>(form, "İlçe", 218, 310, 170, IlceleriGetir(cmbIl.Text), null, null);
+            var txtAcikAdres = MetinKutusuEkle(form, "Açık Adres", 24, 380, 364);
+            var txtPosta = MetinKutusuEkle(form, "Posta Kodu", 24, 450, 170);
+            cmbIl.SelectedIndexChanged += (_, _) => IlceleriYenidenBagla(cmbIlce, cmbIl.Text);
+            var tablo = TabloOlustur<Musteri>(gridLeft, gridTop, gridWidth, 500);
+            _contentPanel.Controls.Add(tablo);
             var selectedID = string.Empty;
-
             void RefreshGrid()
             {
-                grid.DataSource = new BindingList<Musteri>(_musteriManager.MusterileriGetir());
-                HideColumns(grid, "KayitTarihi", "AdSoyad");
-                SetColumnHeaders(grid,
-                    ("MusteriID", "Musteri No"),
+                tablo.DataSource = new BindingList<Musteri>(_musteriManager.MusterileriGetir());
+                SutunlariGizle(tablo, "KayitTarihi", "AdSoyad", "Adres", "TamAdres");
+                SutunBasliklariniAyarla(tablo,
+                    ("MusteriID", "Müşteri No"),
                     ("KimlikNo", "T.C. Kimlik"),
                     ("Telefon", "Telefon"),
-                    ("Adres", "Adres"));
+                    ("Il", "İl"),
+                    ("Ilce", "İlçe"),
+                    ("AcikAdres", "Açık Adres"),
+                    ("PostaKodu", "Posta Kodu"));
             }
 
-            grid.SelectionChanged += (_, _) =>
+            tablo.SelectionChanged += (_, _) =>
             {
-                if (grid.CurrentRow?.DataBoundItem is not Musteri m)
+                if (tablo.CurrentRow?.DataBoundItem is not Musteri m)
                 {
                     return;
                 }
@@ -466,23 +563,14 @@ public class MainForm : Form
                 txtSoyad.Text = m.Soyad;
                 txtKimlik.Text = m.KimlikNo;
                 txtTelefon.Text = m.Telefon;
-                txtAdres.Text = m.Adres;
+                SecimKutusuDegeriniSec(cmbIl, m.Il);
+                IlceleriYenidenBagla(cmbIlce, cmbIl.Text);
+                SecimKutusuDegeriniSec(cmbIlce, m.Ilce);
+                txtAcikAdres.Text = string.IsNullOrWhiteSpace(m.AcikAdres) ? m.Adres : m.AcikAdres;
+                txtPosta.Text = m.PostaKodu;
             };
 
-            form.Controls.Add(CreateActionButton("Kaydet", 24, 390, 170, _green, () => Safe(() =>
-            {
-                _musteriManager.MusteriEkle(new Musteri
-                {
-                    Ad = txtAd.Text,
-                    Soyad = txtSoyad.Text,
-                    KimlikNo = txtKimlik.Text,
-                    Telefon = DigitsOnly(txtTelefon.Text),
-                    Adres = txtAdres.Text
-                });
-                RefreshGrid();
-            }, "Musteri kaydedildi.")));
-
-            form.Controls.Add(CreateActionButton("Guncelle", 218, 390, 170, Color.White, () => Safe(() =>
+            form.Controls.Add(IslemDugmesiOlustur("Güncelle", 24, 560, 170, _green, () => GuvenliCalistir(() =>
             {
                 _musteriManager.MusteriGuncelle(new Musteri
                 {
@@ -490,21 +578,24 @@ public class MainForm : Form
                     Ad = txtAd.Text,
                     Soyad = txtSoyad.Text,
                     KimlikNo = txtKimlik.Text,
-                    Telefon = DigitsOnly(txtTelefon.Text),
-                    Adres = txtAdres.Text
+                    Telefon = SadeceRakamlar(txtTelefon.Text),
+                    Il = cmbIl.Text,
+                    Ilce = cmbIlce.Text,
+                    AcikAdres = txtAcikAdres.Text,
+                    PostaKodu = txtPosta.Text
                 });
                 RefreshGrid();
-            }, "Musteri guncellendi."), _ink));
+            }, "Müşteri güncellendi.")));
 
-            form.Controls.Add(CreateActionButton("Sil", 24, 442, 364, Color.FromArgb(249, 232, 232), () =>
+            form.Controls.Add(IslemDugmesiOlustur("Sil", 218, 560, 170, Color.FromArgb(249, 232, 232), () =>
             {
-                if (Confirm("Secili musteri silinsin mi?"))
+                if (Onayla("Seçili müşteri silinsin mi?"))
                 {
-                    Safe(() =>
+                    GuvenliCalistir(() =>
                     {
                         _musteriManager.MusteriSil(selectedID);
                         RefreshGrid();
-                    }, "Musteri silindi.");
+                    }, "Müşteri silindi.");
                 }
             }, Color.FromArgb(190, 45, 45)));
 
@@ -512,49 +603,55 @@ public class MainForm : Form
         }
         catch (Exception ex)
         {
-            ShowPageError(ex);
+            SayfaHatasiniGoster(ex);
         }
         finally
         {
-            FinishPage();
+            SayfayiBitir();
         }
     }
 
-    private void ShowAssets()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void VarliklariGoster()
     {
-        PreparePage("Varliklar");
+        SayfayiHazirla("Varliklar");
         try
         {
-            AddHeader("Varliklar", "Tiny house, karavan ve bungalov durumlarini yonetin.", null, null);
+            BaslikEkle("Varlıklar", "Tiny house, karavan ve bungalov durumlarını yönetin.", null, null);
 
-            var form = CreateCard(0, 126, 420, 500, _green);
+            var wideLayout = IcerikGenisligi() >= 940;
+            var formWidth = Math.Min(420, IcerikGenisligi());
+            var gridLeft = wideLayout ? formWidth + 20 : 0;
+            var gridTop = wideLayout ? 126 : 650;
+            var gridWidth = wideLayout ? IcerikGenisligi() - gridLeft : IcerikGenisligi();
+
+            var form = KartOlustur(0, 126, formWidth, 500, _green);
             _contentPanel.Controls.Add(form);
-            form.Controls.Add(CreateLabel("Varlik Kaydi", 24, 24, 20, FontStyle.Bold, _ink, 364));
-            var cmbTip = AddCombo<string>(form, "Tip", 24, 100, 170, ["Tiny House", "Karavan", "Bungalov"], null, null);
-            var cmbDurum = AddCombo<VarlikDurumu>(form, "Durum", 218, 100, 170, Enum.GetValues<VarlikDurumu>().ToList(), null, null);
-            var txtAd = AddTextBox(form, "Ad", 24, 170, 364);
-            var txtKonum = AddTextBox(form, "Konum", 24, 240, 364);
-            var numKapasite = AddNumeric(form, "Kapasite", 24, 310, 170, 1, 20);
-            var numUcret = AddNumeric(form, "Gunluk Ucret", 218, 310, 170, 100, 100000);
-            var grid = CreateGrid<Varlik>(440, 126, ContentWidth() - 440, 500);
-            _contentPanel.Controls.Add(grid);
+            form.Controls.Add(EtiketOlustur("Varlık Kaydı", 24, 24, 20, FontStyle.Bold, _ink, 364));
+            var cmbTip = SecimKutusuEkle<string>(form, "Tip", 24, 100, 170, ["Tiny House", "Karavan", "Bungalov"], null, null);
+            var cmbDurum = SecimKutusuEkle<VarlikDurumu>(form, "Durum", 218, 100, 170, Enum.GetValues<VarlikDurumu>().ToList(), null, null);
+            var txtAd = MetinKutusuEkle(form, "Ad", 24, 170, 364);
+            var txtKonum = MetinKutusuEkle(form, "Konum", 24, 240, 364);
+            var numKapasite = SayisalAlanEkle(form, "Kapasite", 24, 310, 170, 1, 20);
+            var numUcret = SayisalAlanEkle(form, "Günlük Ücret", 218, 310, 170, 100, 100000);
+            var tablo = TabloOlustur<Varlik>(gridLeft, gridTop, gridWidth, 500);
+            _contentPanel.Controls.Add(tablo);
             var selectedID = string.Empty;
-
             void RefreshGrid()
             {
-                grid.DataSource = new BindingList<Varlik>(_varlikManager.VarliklariGetir());
-                SetColumnHeaders(grid,
-                    ("VarlikID", "Varlik No"),
+                tablo.DataSource = new BindingList<Varlik>(_varlikManager.VarliklariGetir());
+                SutunBasliklariniAyarla(tablo,
+                    ("VarlikID", "Varlık No"),
                     ("VarlikTipi", "Tip"),
-                    ("GunlukUcret", "Gunluk Ucret"),
+                    ("GunlukUcret", "Günlük Ücret"),
                     ("Kapasite", "Kapasite"),
                     ("Durum", "Durum"),
                     ("Konum", "Konum"));
             }
 
-            grid.SelectionChanged += (_, _) =>
+            tablo.SelectionChanged += (_, _) =>
             {
-                if (grid.CurrentRow?.DataBoundItem is not Varlik v)
+                if (tablo.CurrentRow?.DataBoundItem is not Varlik v)
                 {
                     return;
                 }
@@ -568,7 +665,7 @@ public class MainForm : Form
                 numUcret.Value = Math.Clamp(v.GunlukUcret, numUcret.Minimum, numUcret.Maximum);
             };
 
-            form.Controls.Add(CreateActionButton("Kaydet", 24, 390, 170, _green, () => Safe(() =>
+            form.Controls.Add(IslemDugmesiOlustur("Kaydet", 24, 390, 170, _green, () => GuvenliCalistir(() =>
             {
                 _varlikManager.VarlikEkle(new Varlik
                 {
@@ -580,9 +677,9 @@ public class MainForm : Form
                     GunlukUcret = numUcret.Value
                 });
                 RefreshGrid();
-            }, "Varlik kaydedildi.")));
+            }, "Varlık kaydedildi.")));
 
-            form.Controls.Add(CreateActionButton("Guncelle", 218, 390, 170, Color.White, () => Safe(() =>
+            form.Controls.Add(IslemDugmesiOlustur("Güncelle", 218, 390, 170, Color.White, () => GuvenliCalistir(() =>
             {
                 _varlikManager.VarlikGuncelle(new Varlik
                 {
@@ -595,17 +692,17 @@ public class MainForm : Form
                     GunlukUcret = numUcret.Value
                 });
                 RefreshGrid();
-            }, "Varlik guncellendi."), _ink));
+            }, "Varlık güncellendi."), _ink));
 
-            form.Controls.Add(CreateActionButton("Sil", 24, 442, 364, Color.FromArgb(249, 232, 232), () =>
+            form.Controls.Add(IslemDugmesiOlustur("Sil", 24, 442, 364, Color.FromArgb(249, 232, 232), () =>
             {
-                if (Confirm("Secili varlik silinsin mi?"))
+                if (Onayla("Seçili varlık silinsin mi?"))
                 {
-                    Safe(() =>
+                    GuvenliCalistir(() =>
                     {
                         _varlikManager.VarlikSil(selectedID);
                         RefreshGrid();
-                    }, "Varlik silindi.");
+                    }, "Varlık silindi.");
                 }
             }, Color.FromArgb(190, 45, 45)));
 
@@ -613,25 +710,32 @@ public class MainForm : Form
         }
         catch (Exception ex)
         {
-            ShowPageError(ex);
+            SayfaHatasiniGoster(ex);
         }
         finally
         {
-            FinishPage();
+            SayfayiBitir();
         }
     }
 
-    private void ShowOperations()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void OperasyonlariGoster()
     {
-        PreparePage("Operasyon");
+        SayfayiHazirla("Operasyon");
         try
         {
-            AddHeader("Operasyon", "Temizlik ve bakim sureclerini takip edin.", null, null);
-            var form = CreateCard(0, 126, 420, 430, _orange);
+            BaslikEkle("Operasyon", "Temizlik ve bakim sureclerini takip edin.", null, null);
+            var wideLayout = IcerikGenisligi() >= 940;
+            var formWidth = Math.Min(420, IcerikGenisligi());
+            var gridLeft = wideLayout ? formWidth + 20 : 0;
+            var gridTop = wideLayout ? 126 : 580;
+            var gridWidth = wideLayout ? IcerikGenisligi() - gridLeft : IcerikGenisligi();
+
+            var form = KartOlustur(0, 126, formWidth, 430, _orange);
             _contentPanel.Controls.Add(form);
-            form.Controls.Add(CreateLabel("Operasyon Kaydi", 24, 24, 20, FontStyle.Bold, _ink, 364));
-            var cmbVarlik = AddCombo<Varlik>(form, "Varlik", 24, 100, 364, _varlikManager.VarliklariGetir(), "Ad", "VarlikID");
-            var cmbTip = AddCombo<OperasyonTipi>(form, "Tip", 24, 168, 170, Enum.GetValues<OperasyonTipi>().ToList(), null, null);
+            form.Controls.Add(EtiketOlustur("Operasyon Kaydı", 24, 24, 20, FontStyle.Bold, _ink, 364));
+            var cmbVarlik = SecimKutusuEkle<Varlik>(form, "Varlık", 24, 100, 364, _varlikManager.VarliklariGetir(), "Ad", "VarlikID");
+            var cmbTip = SecimKutusuEkle<OperasyonTipi>(form, "Tip", 24, 168, 170, Enum.GetValues<OperasyonTipi>().ToList(), null, null);
             var chkDurum = new CheckBox
             {
                 Text = "Tamamlandi",
@@ -642,28 +746,27 @@ public class MainForm : Form
                 BackColor = _card
             };
             form.Controls.Add(chkDurum);
-            var txtNot = AddTextBox(form, "Not", 24, 240, 364);
-            var grid = CreateGrid<Operasyon>(440, 126, ContentWidth() - 440, 430);
-            _contentPanel.Controls.Add(grid);
+            var txtNot = MetinKutusuEkle(form, "Not", 24, 240, 364);
+            var tablo = TabloOlustur<Operasyon>(gridLeft, gridTop, gridWidth, 430);
+            _contentPanel.Controls.Add(tablo);
             var selectedID = string.Empty;
-
             void RefreshGrid()
             {
-                grid.DataSource = new BindingList<Operasyon>(_operasyonManager.OperasyonlariGetir());
-                HideColumns(grid, "VarlikID");
-                SetColumnHeaders(grid,
+                tablo.DataSource = new BindingList<Operasyon>(_operasyonManager.OperasyonlariGetir());
+                SutunlariGizle(tablo, "VarlikID");
+                SutunBasliklariniAyarla(tablo,
                     ("OperasyonID", "Operasyon No"),
                     ("OperasyonTipi", "Tip"),
                     ("Durum", "Tamamlandi"),
                     ("Tarih", "Tarih"),
                     ("Notlar", "Not"),
-                    ("VarlikAdi", "Varlik"),
+                    ("VarlikAdi", "Varlık"),
                     ("DurumMetni", "Durum"));
             }
 
-            grid.SelectionChanged += (_, _) =>
+            tablo.SelectionChanged += (_, _) =>
             {
-                if (grid.CurrentRow?.DataBoundItem is not Operasyon o)
+                if (tablo.CurrentRow?.DataBoundItem is not Operasyon o)
                 {
                     return;
                 }
@@ -675,20 +778,7 @@ public class MainForm : Form
                 txtNot.Text = o.Notlar;
             };
 
-            form.Controls.Add(CreateActionButton("Kaydet", 24, 320, 112, _green, () => Safe(() =>
-            {
-                _operasyonManager.OperasyonEkle(new Operasyon
-                {
-                    VarlikID = cmbVarlik.SelectedValue?.ToString() ?? string.Empty,
-                    OperasyonTipi = cmbTip.SelectedItem is OperasyonTipi t ? t : OperasyonTipi.Temizlik,
-                    Durum = chkDurum.Checked,
-                    Tarih = DateTime.Today,
-                    Notlar = txtNot.Text
-                });
-                RefreshGrid();
-            }, "Operasyon kaydedildi.")));
-
-            form.Controls.Add(CreateActionButton("Guncelle", 148, 320, 112, Color.White, () => Safe(() =>
+            form.Controls.Add(IslemDugmesiOlustur("Güncelle", 24, 320, 112, _green, () => GuvenliCalistir(() =>
             {
                 _operasyonManager.OperasyonGuncelle(new Operasyon
                 {
@@ -700,19 +790,19 @@ public class MainForm : Form
                     Notlar = txtNot.Text
                 });
                 RefreshGrid();
-            }, "Operasyon guncellendi."), _ink));
+            }, "Operasyon güncellendi.")));
 
-            form.Controls.Add(CreateActionButton("Tamamla", 272, 320, 116, _greenSoft, () => Safe(() =>
+            form.Controls.Add(IslemDugmesiOlustur("Tamamla", 148, 320, 112, _greenSoft, () => GuvenliCalistir(() =>
             {
                 _operasyonManager.OperasyonTamamla(selectedID);
                 RefreshGrid();
             }, "Operasyon tamamlandi."), _green));
 
-            form.Controls.Add(CreateActionButton("Sil", 24, 364, 364, Color.White, () =>
+            form.Controls.Add(IslemDugmesiOlustur("Sil", 272, 320, 116, _danger, () =>
             {
-                if (Confirm("Secili operasyon silinsin mi?"))
+                if (Onayla("Seçili operasyon silinsin mi?"))
                 {
-                    Safe(() =>
+                    GuvenliCalistir(() =>
                     {
                         _operasyonManager.OperasyonSil(selectedID);
                         RefreshGrid();
@@ -724,57 +814,148 @@ public class MainForm : Form
         }
         catch (Exception ex)
         {
-            ShowPageError(ex);
+            SayfaHatasiniGoster(ex);
         }
         finally
         {
-            FinishPage();
+            SayfayiBitir();
         }
     }
 
-    private void ShowFinance()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void FinansiGoster()
     {
-        PreparePage("Finans");
+        SayfayiHazirla("Finans");
         try
         {
-            AddHeader("Finans / Kasa", "Odeme, ekstra hizmet ve gelir akisini yonetin.", null, null);
-            var reservations = _rezervasyonManager.RezervasyonlariGetir();
+            BaslikEkle("Ödeme ve Çıkış", "Ekstra hizmet, ödeme ve konaklama çıkış işlemlerini yönetin.", null, null);
+            var rezervasyonlar = _rezervasyonManager.RezervasyonlariGetir();
+            var activeReservations = rezervasyonlar
+                .Where(r => r.Durum == RezervasyonDurumu.Aktif)
+                .ToList();
+            var activeReservationIds = activeReservations
+                .Select(r => r.RezervasyonID)
+                .ToHashSet();
+            var wideLayout = IcerikGenisligi() >= 940;
+            var formWidth = Math.Min(420, IcerikGenisligi());
+            var serviceTop = 126;
+            var rightLeft = wideLayout ? formWidth + 20 : 0;
+            var rightWidth = wideLayout ? IcerikGenisligi() - rightLeft : IcerikGenisligi();
+            var serviceGridTop = wideLayout ? serviceTop : serviceTop + 340;
+            var paymentTop = wideLayout ? serviceTop + 360 : serviceGridTop + 340;
+            var paymentGridTop = wideLayout ? paymentTop : paymentTop + 410;
+            var exitTop = wideLayout ? paymentTop + 430 : paymentGridTop + 410;
+            var exitGridTop = wideLayout ? exitTop : exitTop + 240;
 
-            var paymentForm = CreateCard(0, 126, 420, 390, _blue);
-            _contentPanel.Controls.Add(paymentForm);
-            paymentForm.Controls.Add(CreateLabel("Odeme Al", 24, 24, 20, FontStyle.Bold, _ink, 364));
-            var cmbRez = AddCombo<Rezervasyon>(paymentForm, "Rezervasyon", 24, 100, 364, reservations, "SecimMetni", "RezervasyonID");
-            var numTutar = AddNumeric(paymentForm, "Tutar", 24, 170, 170, 1, 1000000);
-            var cmbTip = AddCombo<OdemeTipi>(paymentForm, "Odeme Tipi", 218, 170, 170, Enum.GetValues<OdemeTipi>().ToList(), null, null);
-            var txtAciklama = AddTextBox(paymentForm, "Aciklama", 24, 240, 364);
-            var paymentInfo = CreateLabel("Rezervasyon secildiginde tutar otomatik hesaplanir.", 24, 286, 10.5F, FontStyle.Bold, _green, 364);
-            paymentForm.Controls.Add(paymentInfo);
-            var paymentGrid = CreateGrid<Odeme>(440, 126, ContentWidth() - 440, 390);
-            _contentPanel.Controls.Add(paymentGrid);
-            var selectedPaymentID = string.Empty;
-
-            void RefreshPayments()
+            var serviceForm = KartOlustur(0, serviceTop, formWidth, 320, _violet);
+            _contentPanel.Controls.Add(serviceForm);
+            serviceForm.Controls.Add(EtiketOlustur("Ekstra Hizmetler", 24, 24, 20, FontStyle.Bold, _ink, 364));
+            var cmbRezHizmet = SecimKutusuEkle<Rezervasyon>(serviceForm, "Rezervasyon", 24, 100, 364, activeReservations, "SecimMetni", "RezervasyonID");
+            var txtHizmet = MetinKutusuEkle(serviceForm, "Hizmet Adı", 24, 170, 170);
+            var numHizmet = SayisalAlanEkle(serviceForm, "Ücret", 218, 170, 170, 0, 100000);
+            var serviceGrid = TabloOlustur<Hizmet>(rightLeft, serviceGridTop, rightWidth, 320);
+            _contentPanel.Controls.Add(serviceGrid);
+            var selectedServiceID = string.Empty;
+            void RefreshServices()
             {
-                paymentGrid.DataSource = new BindingList<Odeme>(_odemeManager.OdemeleriGetir());
-                HideColumns(paymentGrid, "RezervasyonID");
-                SetColumnHeaders(paymentGrid,
-                    ("OdemeID", "Odeme No"),
-                    ("Ucret", "Tutar"),
-                    ("OdemeTarihi", "Tarih"),
-                    ("OdemeTipi", "Tip"),
-                    ("Aciklama", "Aciklama"),
-                    ("MusteriAdSoyad", "Musteri"));
+                var activeServices = _hizmetManager.HizmetleriGetir()
+                    .Where(h => activeReservationIds.Contains(h.RezervasyonID))
+                    .ToList();
+                serviceGrid.DataSource = new BindingList<Hizmet>(activeServices);
+                SutunlariGizle(serviceGrid, "RezervasyonID");
+                SutunBasliklariniAyarla(serviceGrid,
+                    ("HizmetID", "Hizmet No"),
+                    ("Ad", "Hizmet"),
+                    ("Ücret", "Ücret"));
             }
 
+            serviceGrid.SelectionChanged += (_, _) =>
+            {
+                if (serviceGrid.CurrentRow?.DataBoundItem is Hizmet hizmet)
+                {
+                    selectedServiceID = hizmet.HizmetID;
+                    cmbRezHizmet.SelectedValue = hizmet.RezervasyonID;
+                    txtHizmet.Text = hizmet.Ad;
+                    numHizmet.Value = Math.Clamp(hizmet.Ucret, numHizmet.Minimum, numHizmet.Maximum);
+                }
+            };
+
+            serviceForm.Controls.Add(IslemDugmesiOlustur("Ekle", 24, 240, 112, _green, () => GuvenliCalistir(() =>
+            {
+                _hizmetManager.HizmetEkle(new Hizmet
+                {
+                    RezervasyonID = cmbRezHizmet.SelectedValue?.ToString() ?? string.Empty,
+                    Ad = txtHizmet.Text,
+                    Ucret = numHizmet.Value
+                });
+                RefreshServices();
+                FinansiGoster();
+            }, "Hizmet eklendi ve rezervasyon toplamı yenilendi.")));
+
+            serviceForm.Controls.Add(IslemDugmesiOlustur("Güncelle", 148, 240, 112, Color.White, () => GuvenliCalistir(() =>
+            {
+                _hizmetManager.HizmetGuncelle(new Hizmet
+                {
+                    HizmetID = selectedServiceID,
+                    RezervasyonID = cmbRezHizmet.SelectedValue?.ToString() ?? string.Empty,
+                    Ad = txtHizmet.Text,
+                    Ucret = numHizmet.Value
+                });
+                RefreshServices();
+                FinansiGoster();
+            }, "Hizmet güncellendi ve rezervasyon toplamı yenilendi."), _ink));
+
+            serviceForm.Controls.Add(IslemDugmesiOlustur("Sil", 272, 240, 116, Color.FromArgb(249, 232, 232), () =>
+            {
+                if (Onayla("Seçili hizmet silinsin mi?"))
+                {
+                    GuvenliCalistir(() =>
+                    {
+                        _hizmetManager.HizmetSil(selectedServiceID);
+                        RefreshServices();
+                        FinansiGoster();
+                    }, "Hizmet silindi ve rezervasyon toplamı yenilendi.");
+                }
+            }, Color.FromArgb(190, 45, 45)));
+
+            var paymentForm = KartOlustur(0, paymentTop, formWidth, 390, _blue);
+            _contentPanel.Controls.Add(paymentForm);
+            paymentForm.Controls.Add(EtiketOlustur("Ödeme", 24, 24, 20, FontStyle.Bold, _ink, 364));
+            var cmbRez = SecimKutusuEkle<Rezervasyon>(paymentForm, "Rezervasyon", 24, 100, 364, activeReservations, "SecimMetni", "RezervasyonID");
+            var numTutar = SayisalAlanEkle(paymentForm, "Tutar", 24, 170, 170, 1, 1000000);
+            var cmbTip = SecimKutusuEkle<OdemeTipi>(paymentForm, "Ödeme Tipi", 218, 170, 170, Enum.GetValues<OdemeTipi>().ToList(), null, null);
+            var txtAciklama = MetinKutusuEkle(paymentForm, "Açıklama", 24, 240, 364);
+            var paymentInfo = EtiketOlustur("Rezervasyon seçilince tutar hesaplanır.", 24, 286, 10.5F, FontStyle.Bold, _green, 364);
+            paymentInfo.Height = 44;
+            paymentInfo.AutoEllipsis = false;
+            paymentForm.Controls.Add(paymentInfo);
+            var paymentGrid = TabloOlustur<Odeme>(rightLeft, paymentGridTop, rightWidth, 390);
+            _contentPanel.Controls.Add(paymentGrid);
+            var selectedPaymentID = string.Empty;
+            void RefreshPayments()
+            {
+                var activePayments = _odemeManager.OdemeleriGetir()
+                    .Where(o => activeReservationIds.Contains(o.RezervasyonID))
+                    .ToList();
+                paymentGrid.DataSource = new BindingList<Odeme>(activePayments);
+                SutunlariGizle(paymentGrid, "RezervasyonID");
+                SutunBasliklariniAyarla(paymentGrid,
+                    ("OdemeID", "Ödeme No"),
+                    ("Ücret", "Tutar"),
+                    ("OdemeTarihi", "Tarih"),
+                    ("OdemeTipi", "Tip"),
+                    ("Aciklama", "Açıklama"),
+                    ("MusteriAdSoyad", "Müşteri"));
+            }
             void FillPaymentAmount()
             {
                 if (cmbRez.SelectedItem is not Rezervasyon rezervasyon)
                 {
-                    paymentInfo.Text = "Rezervasyon secildiginde tutar otomatik hesaplanir.";
+                    paymentInfo.Text = "Rezervasyon seçilince tutar hesaplanır.";
                     return;
                 }
 
-                Safe(() =>
+                GuvenliCalistir(() =>
                 {
                     var kalan = _odemeManager.KalanTutarGetir(rezervasyon.RezervasyonID);
                     numTutar.Value = Math.Clamp(kalan <= 0 ? rezervasyon.ToplamUcret : kalan, numTutar.Minimum, numTutar.Maximum);
@@ -795,7 +976,7 @@ public class MainForm : Form
                 }
             };
 
-            paymentForm.Controls.Add(CreateActionButton("Kaydet", 24, 330, 112, _green, () => Safe(() =>
+            paymentForm.Controls.Add(IslemDugmesiOlustur("Kaydet", 24, 330, 112, _green, () => GuvenliCalistir(() =>
             {
                 _odemeManager.OdemeEkle(new Odeme
                 {
@@ -805,11 +986,10 @@ public class MainForm : Form
                     OdemeTipi = cmbTip.SelectedItem is OdemeTipi t ? t : OdemeTipi.Nakit,
                     Aciklama = txtAciklama.Text
                 });
-                RefreshPayments();
-                FillPaymentAmount();
-            }, "Odeme kaydedildi.")));
+                FinansiGoster();
+            }, "Ödeme kaydedildi.")));
 
-            paymentForm.Controls.Add(CreateActionButton("Guncelle", 148, 330, 112, Color.White, () => Safe(() =>
+            paymentForm.Controls.Add(IslemDugmesiOlustur("Güncelle", 148, 330, 112, Color.White, () => GuvenliCalistir(() =>
             {
                 _odemeManager.OdemeGuncelle(new Odeme
                 {
@@ -820,91 +1000,45 @@ public class MainForm : Form
                     OdemeTipi = cmbTip.SelectedItem is OdemeTipi t ? t : OdemeTipi.Nakit,
                     Aciklama = txtAciklama.Text
                 });
-                RefreshPayments();
-                FillPaymentAmount();
-            }, "Odeme guncellendi."), _ink));
+                FinansiGoster();
+            }, "Ödeme güncellendi."), _ink));
 
-            paymentForm.Controls.Add(CreateActionButton("Sil", 272, 330, 116, Color.FromArgb(249, 232, 232), () =>
+            paymentForm.Controls.Add(IslemDugmesiOlustur("Sil", 272, 330, 116, Color.FromArgb(249, 232, 232), () =>
             {
-                if (Confirm("Secili odeme silinsin mi?"))
+                if (Onayla("Seçili ödeme silinsin mi?"))
                 {
-                    Safe(() =>
+                    GuvenliCalistir(() =>
                     {
                         _odemeManager.OdemeSil(selectedPaymentID);
-                        RefreshPayments();
-                        FillPaymentAmount();
-                    }, "Odeme silindi.");
+                        FinansiGoster();
+                    }, "Ödeme silindi.");
                 }
             }, Color.FromArgb(190, 45, 45)));
 
-            var serviceForm = CreateCard(0, 550, 420, 320, _violet);
-            _contentPanel.Controls.Add(serviceForm);
-            serviceForm.Controls.Add(CreateLabel("Ekstra Hizmet", 24, 24, 20, FontStyle.Bold, _ink, 364));
-            var cmbRezHizmet = AddCombo<Rezervasyon>(serviceForm, "Rezervasyon", 24, 100, 364, reservations, "SecimMetni", "RezervasyonID");
-            var txtHizmet = AddTextBox(serviceForm, "Hizmet Adi", 24, 170, 170);
-            var numHizmet = AddNumeric(serviceForm, "Ucret", 218, 170, 170, 0, 100000);
-            var serviceGrid = CreateGrid<Hizmet>(440, 550, ContentWidth() - 440, 320);
-            _contentPanel.Controls.Add(serviceGrid);
-            var selectedServiceID = string.Empty;
-
-            void RefreshServices()
+            var paidActiveReservations = activeReservations
+                .Where(r => _odemeManager.KalanTutarGetir(r.RezervasyonID) <= 0)
+                .ToList();
+            var exitForm = KartOlustur(0, exitTop, formWidth, 220, _orange);
+            _contentPanel.Controls.Add(exitForm);
+            exitForm.Controls.Add(EtiketOlustur("Çıkış", 24, 24, 20, FontStyle.Bold, _ink, 364));
+            var cmbExitRez = SecimKutusuEkle<Rezervasyon>(exitForm, "Rezervasyon", 24, 100, 364, paidActiveReservations, "SecimMetni", "RezervasyonID");
+            exitForm.Controls.Add(IslemDugmesiOlustur("Çıkış Yap", 24, 160, 170, _danger, () => GuvenliCalistir(() =>
             {
-                serviceGrid.DataSource = new BindingList<Hizmet>(_hizmetManager.HizmetleriGetir());
-                HideColumns(serviceGrid, "RezervasyonID");
-                SetColumnHeaders(serviceGrid,
-                    ("HizmetID", "Hizmet No"),
-                    ("Ad", "Hizmet"),
-                    ("Ucret", "Ucret"));
-            }
+                _rezervasyonManager.CikisIslemiBaslat(cmbExitRez.SelectedValue?.ToString() ?? string.Empty);
+                FinansiGoster();
+            }, "Çıkış işlemi tamamlandı, temizlik operasyonu başladı."), _ink));
 
-            serviceGrid.SelectionChanged += (_, _) =>
-            {
-                if (serviceGrid.CurrentRow?.DataBoundItem is Hizmet hizmet)
-                {
-                    selectedServiceID = hizmet.HizmetID;
-                    cmbRezHizmet.SelectedValue = hizmet.RezervasyonID;
-                    txtHizmet.Text = hizmet.Ad;
-                    numHizmet.Value = Math.Clamp(hizmet.Ucret, numHizmet.Minimum, numHizmet.Maximum);
-                }
-            };
-
-            serviceForm.Controls.Add(CreateActionButton("Ekle", 24, 240, 112, _green, () => Safe(() =>
-            {
-                _hizmetManager.HizmetEkle(new Hizmet
-                {
-                    RezervasyonID = cmbRezHizmet.SelectedValue?.ToString() ?? string.Empty,
-                    Ad = txtHizmet.Text,
-                    Ucret = numHizmet.Value
-                });
-                RefreshServices();
-                ShowFinance();
-            }, "Hizmet eklendi ve rezervasyon toplami yenilendi.")));
-
-            serviceForm.Controls.Add(CreateActionButton("Guncelle", 148, 240, 112, Color.White, () => Safe(() =>
-            {
-                _hizmetManager.HizmetGuncelle(new Hizmet
-                {
-                    HizmetID = selectedServiceID,
-                    RezervasyonID = cmbRezHizmet.SelectedValue?.ToString() ?? string.Empty,
-                    Ad = txtHizmet.Text,
-                    Ucret = numHizmet.Value
-                });
-                RefreshServices();
-                ShowFinance();
-            }, "Hizmet guncellendi ve rezervasyon toplami yenilendi."), _ink));
-
-            serviceForm.Controls.Add(CreateActionButton("Sil", 272, 240, 116, Color.FromArgb(249, 232, 232), () =>
-            {
-                if (Confirm("Secili hizmet silinsin mi?"))
-                {
-                    Safe(() =>
-                    {
-                        _hizmetManager.HizmetSil(selectedServiceID);
-                        RefreshServices();
-                        ShowFinance();
-                    }, "Hizmet silindi ve rezervasyon toplami yenilendi.");
-                }
-            }, Color.FromArgb(190, 45, 45)));
+            var paidReservationsGrid = TabloOlustur<Rezervasyon>(rightLeft, exitGridTop, rightWidth, 220);
+            _contentPanel.Controls.Add(paidReservationsGrid);
+            paidReservationsGrid.DataSource = new BindingList<Rezervasyon>(paidActiveReservations);
+            SutunlariGizle(paidReservationsGrid, "MusteriID", "VarlikID", "KayitTarihi");
+            SutunBasliklariniAyarla(paidReservationsGrid,
+                ("RezervasyonID", "Rezervasyon"),
+                ("MusteriAdSoyad", "Müşteri"),
+                ("VarlikAdi", "Varlık"),
+                ("BasTarih", "Giriş"),
+                ("SonTarih", "Çıkış"),
+                ("ToplamUcret", "Toplam"));
 
             RefreshPayments();
             FillPaymentAmount();
@@ -912,34 +1046,40 @@ public class MainForm : Form
         }
         catch (Exception ex)
         {
-            ShowPageError(ex);
+            SayfaHatasiniGoster(ex);
         }
         finally
         {
-            FinishPage();
+            SayfayiBitir();
         }
     }
 
-    private void ShowSettings()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void AyarlariGoster()
     {
-        PreparePage("Ayarlar");
+        SayfayiHazirla("Ayarlar");
         try
         {
-            AddHeader("Ayarlar", "Profil, isletme ve bildirim tercihleri.", null, null);
+            BaslikEkle("Ayarlar", "Profil, işletme ve bildirim tercihleri.", null, null);
             var user = GetCurrentUser();
             var settings = _profilManager.IsletmeAyarlariGetir();
+            var wideLayout = IcerikGenisligi() >= 1120;
+            var leftWidth = Math.Min(520, IcerikGenisligi());
+            var listLeft = wideLayout ? leftWidth + 40 : 0;
+            var listTop = wideLayout ? 126 : 780;
+            var listWidth = wideLayout ? Math.Max(420, IcerikGenisligi() - listLeft) : IcerikGenisligi();
 
-            var profile = CreateCard(0, 126, 520, 230, _green);
+            var profile = KartOlustur(0, 126, leftWidth, 230, _green);
             _contentPanel.Controls.Add(profile);
-            var profileName = CreateLabel(user.AdSoyad, 32, 28, 22, FontStyle.Bold, _ink, 440);
-            var profileRole = CreateLabel(user.Rol, 34, 68, 12, FontStyle.Regular, _muted, 240);
+            var profileName = EtiketOlustur(user.AdSoyad, 32, 28, 22, FontStyle.Bold, _ink, 440);
+            var profileRole = EtiketOlustur(user.Rol, 34, 68, 12, FontStyle.Regular, _muted, 240);
             profile.Controls.Add(profileName);
             profile.Controls.Add(profileRole);
-            var txtAdSoyad = AddTextBox(profile, "Ad Soyad", 32, 124, 205);
-            var txtEmail = AddTextBox(profile, "E-posta", 260, 124, 220);
+            var txtAdSoyad = MetinKutusuEkle(profile, "Ad Soyad", 32, 124, 205);
+            var txtEmail = MetinKutusuEkle(profile, "E-posta", 260, 124, 220);
             txtAdSoyad.Text = user.AdSoyad;
             txtEmail.Text = user.Email;
-            profile.Controls.Add(CreateActionButton("Profili Guncelle", 32, 182, 205, _green, () => Safe(() =>
+            profile.Controls.Add(IslemDugmesiOlustur("Profili Güncelle", 32, 182, 205, _green, () => GuvenliCalistir(() =>
             {
                 user.KullaniciID = CurrentUserId;
                 user.AdSoyad = txtAdSoyad.Text;
@@ -947,24 +1087,24 @@ public class MainForm : Form
                 _profilManager.ProfilGuncelle(user);
                 profileName.Text = user.AdSoyad;
                 profileRole.Text = user.Rol;
-                RefreshHeaderUser();
-            }, "Profil guncellendi.")));
+                BaslikKullanicisiniYenile();
+            }, "Profil güncellendi.")));
 
-            var business = CreateCard(0, 390, 520, 360, _blue);
+            var business = KartOlustur(0, 390, leftWidth, 360, _blue);
             _contentPanel.Controls.Add(business);
-            business.Controls.Add(CreateLabel("ISLETME AYARLARI", 32, 24, 13, FontStyle.Bold, _muted));
-            var txtIsletme = AddTextBox(business, "Isletme Bilgileri", 32, 92, 448);
-            var txtPara = AddTextBox(business, "Para Birimi", 32, 162, 205);
-            var txtDil = AddTextBox(business, "Dil", 260, 162, 220);
+            business.Controls.Add(EtiketOlustur("İŞLETME AYARLARI", 32, 24, 13, FontStyle.Bold, _muted));
+            var txtIsletme = MetinKutusuEkle(business, "İşletme Bilgileri", 32, 92, 448);
+            var txtPara = MetinKutusuEkle(business, "Para Birimi", 32, 162, 205);
+            var txtDil = MetinKutusuEkle(business, "Dil", 260, 162, 220);
             var chkRez = new CheckBox { Text = "Yeni rezervasyon bildirimleri", Left = 32, Top = 232, Width = 260, Checked = settings.RezervasyonBildirimleri, BackColor = _card, ForeColor = _ink };
-            var chkTem = new CheckBox { Text = "Temizlik uyarilari", Left = 32, Top = 264, Width = 260, Checked = settings.TemizlikUyarilari, BackColor = _card, ForeColor = _ink };
+            var chkTem = new CheckBox { Text = "Temizlik uyarıları", Left = 32, Top = 264, Width = 260, Checked = settings.TemizlikUyarilari, BackColor = _card, ForeColor = _ink };
             business.Controls.Add(chkRez);
             business.Controls.Add(chkTem);
             txtIsletme.Text = settings.IsletmeAdi;
             txtPara.Text = settings.ParaBirimi;
             txtDil.Text = settings.Dil;
 
-            business.Controls.Add(CreateActionButton("Ayarlari Kaydet", 32, 306, 448, _green, () => Safe(() =>
+            business.Controls.Add(IslemDugmesiOlustur("Ayarları Kaydet", 32, 306, 448, _green, () => GuvenliCalistir(() =>
             {
                 settings.IsletmeAdi = txtIsletme.Text;
                 settings.ParaBirimi = txtPara.Text;
@@ -974,55 +1114,301 @@ public class MainForm : Form
                 _profilManager.IsletmeAyarlariGuncelle(settings);
             }, "Ayarlar kaydedildi.")));
 
-            var list = CreateCard(560, 126, Math.Max(420, ContentWidth() - 560), 624, _coral);
-            _contentPanel.Controls.Add(list);
-            list.Controls.Add(CreateLabel("SISTEM VE GUVENLIK", 32, 24, 13, FontStyle.Bold, _muted));
-            list.Controls.Add(CreateLabel("SIFRE DEGISTIR", 32, 78, 13, FontStyle.Bold, _ink, 260));
-            var txtMevcutSifre = AddTextBox(list, "Mevcut Sifre", 32, 142, 200);
-            var txtYeniSifre = AddTextBox(list, "Yeni Sifre", 256, 142, 200);
-            var txtYeniSifreTekrar = AddTextBox(list, "Yeni Sifre Tekrar", 32, 212, 200);
+            var liste = KartOlustur(listLeft, listTop, listWidth, 624, _coral);
+            _contentPanel.Controls.Add(liste);
+            liste.Controls.Add(EtiketOlustur("SİSTEM VE GÜVENLİK", 32, 24, 13, FontStyle.Bold, _muted));
+            var passwordToggle = RozetOlustur("Şifre Değiştir ▼", 32, 72, Math.Min(448, liste.Width - 64), Color.White, _ink);
+            passwordToggle.Height = 34;
+            passwordToggle.TextAlign = ContentAlignment.MiddleLeft;
+            passwordToggle.Padding = new Padding(12, 0, 0, 0);
+            passwordToggle.BorderStyle = BorderStyle.FixedSingle;
+            passwordToggle.Cursor = Cursors.Hand;
+            liste.Controls.Add(passwordToggle);
+
+            var passwordPanel = new Panel
+            {
+                Left = 32,
+                Top = 122,
+                Width = Math.Min(448, liste.Width - 64),
+                Height = 154,
+                BackColor = _card,
+                Visible = false
+            };
+            liste.Controls.Add(passwordPanel);
+
+            var passwordHint = EtiketOlustur("Mevcut şifrenizi ve yeni şifrenizi girin.", 0, 0, 9.5F, FontStyle.Regular, _muted, passwordPanel.Width);
+            passwordPanel.Controls.Add(passwordHint);
+            var txtMevcutSifre = MetinKutusuEkle(passwordPanel, "Mevcut Şifre", 0, 38, 200);
+            var txtYeniSifre = MetinKutusuEkle(passwordPanel, "Yeni Şifre", 224, 38, 200);
+            var txtYeniSifreTekrar = MetinKutusuEkle(passwordPanel, "Yeni Şifre Tekrar", 0, 108, 200);
             txtMevcutSifre.UseSystemPasswordChar = true;
             txtYeniSifre.UseSystemPasswordChar = true;
             txtYeniSifreTekrar.UseSystemPasswordChar = true;
-            list.Controls.Add(CreateActionButton("Sifreyi Kaydet", 256, 212, 200, _green, () => Safe(() =>
+            passwordPanel.Controls.Add(IslemDugmesiOlustur("Şifreyi Kaydet", 224, 108, 200, _green, () => GuvenliCalistir(() =>
             {
                 _profilManager.SifreDegistir(CurrentUserId, txtMevcutSifre.Text, txtYeniSifre.Text, txtYeniSifreTekrar.Text);
                 txtMevcutSifre.Clear();
                 txtYeniSifre.Clear();
                 txtYeniSifreTekrar.Clear();
-            }, "Sifre guncellendi.")));
-            AddSettingsRow(list, "Veri Yedekleme", "SQL scripti ve LocalDB veritabani ile teslim edilir.", 304);
-            AddSettingsRow(list, "Kullanim Kosullari", "TinyTrack ERP v1.0 - Gorsel Programlama II final projesi.", 384);
-            list.Controls.Add(CreateActionButton("Cikis Yap", 32, 540, Math.Min(440, list.Width - 64), Color.FromArgb(249, 232, 232), () => Close(), Color.FromArgb(190, 45, 45)));
+            }, "Şifre güncellendi.")));
+            void TogglePasswordPanel()
+            {
+                passwordPanel.Visible = !passwordPanel.Visible;
+                passwordToggle.Text = passwordPanel.Visible ? "Şifre Değiştir ▲" : "Şifre Değiştir ▼";
+            }
+
+            passwordToggle.Click += (_, _) => TogglePasswordPanel();
+
+            AyarSatiriEkle(liste, "Raporları Dışarı Aktar", "Finansal raporu Excel dosyasına aktarır.", 304, () => GuvenliCalistir(FinansalRaporuDisaAktar));
+            AyarSatiriEkle(liste, "Kullanım Koşulları", "Lisans, ticari kullanım ve yasal uyarılar.", 384, KullanimKosullariPenceresiniGoster);
+            liste.Controls.Add(IslemDugmesiOlustur("Çıkış Yap", 32, 540, Math.Min(440, liste.Width - 64), _danger, () => Close()));
         }
         catch (Exception ex)
         {
-            ShowPageError(ex);
+            SayfaHatasiniGoster(ex);
         }
         finally
         {
-            FinishPage();
+            SayfayiBitir();
         }
     }
 
-    private void AddHeader(string title, string subtitle, string? buttonText, Action? buttonAction)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void BaslikEkle(string baslikMetni, string subtitle, string? buttonText, Action? buttonAction)
     {
-        var titleLabel = CreateLabel(title, 0, 0, 28, FontStyle.Bold, _ink, ContentWidth() - 280);
+        var hasButton = !string.IsNullOrWhiteSpace(buttonText) && buttonAction is not null;
+        var reservedButtonWidth = hasButton && IcerikGenisligi() >= 720 ? 260 : 0;
+        var titleLabel = EtiketOlustur(baslikMetni, 0, 0, 28, FontStyle.Bold, _ink, IcerikGenisligi() - reservedButtonWidth);
         _contentPanel.Controls.Add(titleLabel);
-        var subtitleLabel = CreateLabel(subtitle, 2, 62, 13, FontStyle.Regular, _muted, ContentWidth() - 280);
+        var subtitleLabel = EtiketOlustur(subtitle, 2, 62, 13, FontStyle.Regular, _muted, IcerikGenisligi() - reservedButtonWidth);
         _contentPanel.Controls.Add(subtitleLabel);
 
-        if (!string.IsNullOrWhiteSpace(buttonText) && buttonAction is not null)
+        if (hasButton)
         {
-            _contentPanel.Controls.Add(CreateActionButton(buttonText, ContentWidth() - 230, 18, 220, _navy, buttonAction));
+            var buttonTop = IcerikGenisligi() >= 720 ? 18 : 92;
+            var buttonLeft = IcerikGenisligi() >= 720 ? IcerikGenisligi() - 230 : 0;
+            _contentPanel.Controls.Add(IslemDugmesiOlustur(buttonText!, buttonLeft, buttonTop, 220, _navy, buttonAction!));
         }
     }
 
-    private void AddCalendarStrip(int left, int top, Action<DateTime>? onDateSelected = null)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private Musteri RezervasyonMusterisiniBulVeyaOlustur(string ad, string soyad, string kimlikNo, string telefon, string il, string ilce, string acikAdres, string postaKodu)
     {
-        var strip = CreateCard(left, top, ContentWidth(), 130);
+        return _musteriManager.MusteriBulVeyaEkle(new Musteri
+        {
+            Ad = ad.Trim(),
+            Soyad = soyad.Trim(),
+            KimlikNo = kimlikNo.Trim(),
+            Telefon = SadeceRakamlar(telefon),
+            Il = il.Trim(),
+            Ilce = ilce.Trim(),
+            AcikAdres = acikAdres.Trim(),
+            PostaKodu = SadeceRakamlar(postaKodu)
+        });
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static List<string> TurkSehirleri()
+    {
+        return ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya", "Muğla", "Sakarya", "Bolu"];
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static List<string> IlceleriGetir(string city)
+    {
+        return city switch
+        {
+            "İstanbul" => ["Kadıköy", "Beşiktaş", "Şişli", "Üsküdar", "Bakırköy"],
+            "Ankara" => ["Çankaya", "Keçiören", "Yenimahalle", "Mamak", "Etimesgut"],
+            "İzmir" => ["Konak", "Karşıyaka", "Bornova", "Buca", "Çeşme"],
+            "Bursa" => ["Osmangazi", "Nilüfer", "Yıldırım", "Mudanya", "İnegöl"],
+            "Antalya" => ["Muratpaşa", "Kepez", "Konyaaltı", "Alanya", "Kaş"],
+            "Muğla" => ["Bodrum", "Marmaris", "Fethiye", "Menteşe", "Datça"],
+            "Sakarya" => ["Adapazarı", "Serdivan", "Sapanca", "Akyazı", "Hendek"],
+            "Bolu" => ["Merkez", "Abant", "Mengen", "Mudurnu", "Göynük"],
+            _ => []
+        };
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void IlceleriYenidenBagla(ComboBox secimKutusu, string city)
+    {
+        secimKutusu.DataSource = IlceleriGetir(city);
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void SecimKutusuDegeriniSec(ComboBox secimKutusu, string deger)
+    {
+        if (!string.IsNullOrWhiteSpace(deger) && secimKutusu.Items.Contains(deger))
+        {
+            secimKutusu.SelectedItem = deger;
+        }
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void RezervasyonHaftaTakvimiEkle(int left, int top, int width, Action<DateTime> onDateSelected)
+    {
+        var minWeek = HaftaBaslangici(DateTime.Today.AddMonths(-3));
+        var maxWeek = HaftaBaslangici(DateTime.Today.AddMonths(3));
+        _reservationWeekStart = _reservationWeekStart < minWeek ? minWeek : _reservationWeekStart;
+        _reservationWeekStart = _reservationWeekStart > maxWeek ? maxWeek : _reservationWeekStart;
+
+        var strip = KartOlustur(left, top, width, 180, _blue);
         _contentPanel.Controls.Add(strip);
-        strip.Controls.Add(CreateLabel(DateTime.Today.ToString("MMMM yyyy"), 28, 22, 15, FontStyle.Bold, _ink));
+        strip.Controls.Add(EtiketOlustur($"{_reservationWeekStart:dd MMMM} - {_reservationWeekStart.AddDays(6):dd MMMM yyyy}", 76, 24, 15, FontStyle.Bold, _ink, width - 152));
+
+        var previous = IslemDugmesiOlustur("<", 24, 22, 40, Color.White, () =>
+        {
+            if (_reservationWeekStart.AddDays(-7) >= minWeek)
+            {
+                _reservationWeekStart = _reservationWeekStart.AddDays(-7);
+                _selectedCalendarDate = _reservationWeekStart;
+                RezervasyonlariGoster();
+            }
+        }, _ink);
+        var next = IslemDugmesiOlustur(">", width - 64, 22, 40, Color.White, () =>
+        {
+            if (_reservationWeekStart.AddDays(7) <= maxWeek)
+            {
+                _reservationWeekStart = _reservationWeekStart.AddDays(7);
+                _selectedCalendarDate = _reservationWeekStart;
+                RezervasyonlariGoster();
+            }
+        }, _ink);
+        strip.Controls.Add(previous);
+        strip.Controls.Add(next);
+
+        var rezervasyonlar = _rezervasyonManager.RezervasyonlariGetir()
+            .Where(r => r.Durum == RezervasyonDurumu.Aktif)
+            .ToList();
+        var dayWidth = Math.Max(72, (width - 48 - 6 * 10) / 7);
+        for (var i = 0; i < 7; i++)
+        {
+            var tarih = _reservationWeekStart.AddDays(i);
+            var sayi = rezervasyonlar.Count(r => RezervasyonTarihiKapsar(r, tarih));
+            var selected = tarih.Date == _selectedCalendarDate.Date;
+            var back = selected ? _navy : Color.FromArgb(241, 244, 248);
+            var fore = selected ? Color.White : _ink;
+            var dayButton = new Button
+            {
+                Left = 24 + i * (dayWidth + 10),
+                Top = 84,
+                Width = dayWidth,
+                Height = 72,
+                BackColor = back,
+                ForeColor = fore,
+                FlatStyle = FlatStyle.Flat,
+                Text = $"{tarih:ddd}\r\n{tarih:dd}\r\n{sayi} rez.",
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Tag = tarih,
+                TabStop = false
+            };
+            dayButton.FlatAppearance.BorderSize = 0;
+            dayButton.Click += (_, _) => onDateSelected(tarih);
+            strip.Controls.Add(dayButton);
+        }
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void VarlikTakvimiEkle(int left, int top, int width, string varlikID, Action<DateTime> onDateSelected)
+    {
+        EtiketliKontrolleriKaldir("AssetCalendar");
+
+        var calendar = KartOlustur(left, top, width, 460, _coral);
+        calendar.Tag = "AssetCalendar";
+        _contentPanel.Controls.Add(calendar);
+        calendar.Controls.Add(EtiketOlustur("VARLIK TAKVIMI", 24, 24, 13, FontStyle.Bold, _muted, width - 48));
+        calendar.Controls.Add(EtiketOlustur(_newReservationCalendarMonth.ToString("MMMM yyyy"), 76, 62, 18, FontStyle.Bold, _ink, width - 152));
+
+        var minMonth = new DateTime(DateTime.Today.AddMonths(-3).Year, DateTime.Today.AddMonths(-3).Month, 1);
+        var maxMonth = new DateTime(DateTime.Today.AddMonths(3).Year, DateTime.Today.AddMonths(3).Month, 1);
+        calendar.Controls.Add(IslemDugmesiOlustur("<", 24, 62, 40, Color.White, () =>
+        {
+            if (_newReservationCalendarMonth.AddMonths(-1) >= minMonth)
+            {
+                _newReservationCalendarMonth = _newReservationCalendarMonth.AddMonths(-1);
+                VarlikTakvimiEkle(left, top, width, varlikID, onDateSelected);
+            }
+        }, _ink));
+        calendar.Controls.Add(IslemDugmesiOlustur(">", width - 64, 62, 40, Color.White, () =>
+        {
+            if (_newReservationCalendarMonth.AddMonths(1) <= maxMonth)
+            {
+                _newReservationCalendarMonth = _newReservationCalendarMonth.AddMonths(1);
+                VarlikTakvimiEkle(left, top, width, varlikID, onDateSelected);
+            }
+        }, _ink));
+
+        calendar.Controls.Add(RozetOlustur("Dolu", 24, 410, 72, _calendarOccupied, Color.White));
+        calendar.Controls.Add(RozetOlustur("Operasyon", 108, 410, 104, _calendarOperation, Color.White));
+        calendar.Controls.Add(RozetOlustur("Müsait", 224, 410, 82, _calendarAvailable, Color.White));
+
+        var weekLabels = new[] { "Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz" };
+        var cellWidth = Math.Max(50, (width - 48 - 6 * 8) / 7);
+        for (var i = 0; i < weekLabels.Length; i++)
+        {
+            calendar.Controls.Add(EtiketOlustur(weekLabels[i], 24 + i * (cellWidth + 8), 116, 9.5F, FontStyle.Bold, _muted, cellWidth));
+        }
+
+        var firstGridDate = HaftaBaslangici(_newReservationCalendarMonth);
+        var rezervasyonlar = _rezervasyonManager.RezervasyonlariGetir()
+            .Where(r => r.Durum == RezervasyonDurumu.Aktif && r.VarlikID == varlikID)
+            .ToList();
+        var operations = _operasyonManager.OperasyonlariGetir()
+            .Where(o => !o.Durum && o.VarlikID == varlikID)
+            .ToList();
+
+        for (var i = 0; i < 42; i++)
+        {
+            var tarih = firstGridDate.AddDays(i);
+            var satir = i / 7;
+            var col = i % 7;
+            var isCurrentMonth = tarih.Month == _newReservationCalendarMonth.Month;
+            var occupied = rezervasyonlar.Any(r => RezervasyonTarihiKapsar(r, tarih));
+            var inOperation = operations.Any(o => o.Tarih.Date == tarih.Date);
+            var back = occupied
+                ? _calendarOccupied
+                : inOperation
+                    ? _calendarOperation
+                    : _calendarAvailable;
+            var fore = Color.White;
+            var day = new Button
+            {
+                Left = 24 + col * (cellWidth + 8),
+                Top = 150 + satir * 40,
+                Width = cellWidth,
+                Height = 34,
+                BackColor = isCurrentMonth ? back : Color.FromArgb(245, 247, 250),
+                ForeColor = isCurrentMonth ? fore : _muted,
+                FlatStyle = FlatStyle.Flat,
+                Text = tarih.Day.ToString(),
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                TabStop = false
+            };
+            day.FlatAppearance.BorderSize = 0;
+            day.Click += (_, _) => onDateSelected(tarih);
+            calendar.Controls.Add(day);
+        }
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void EtiketliKontrolleriKaldir(string tag)
+    {
+        foreach (var control in _contentPanel.Controls.Cast<Control>().Where(c => Equals(c.Tag, tag)).ToList())
+        {
+            _contentPanel.Controls.Remove(control);
+            control.Dispose();
+        }
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void TakvimSeridiEkle(int left, int top, Action<DateTime>? onDateSelected = null)
+    {
+        var strip = KartOlustur(left, top, IcerikGenisligi(), 130);
+        _contentPanel.Controls.Add(strip);
+        strip.Controls.Add(EtiketOlustur(DateTime.Today.ToString("MMMM yyyy"), 28, 22, 15, FontStyle.Bold, _ink));
 
         var days = new FlowLayoutPanel
         {
@@ -1037,8 +1423,8 @@ public class MainForm : Form
 
         for (var i = 0; i < 9; i++)
         {
-            var date = DateTime.Today.AddDays(i);
-            var active = date.Date == _selectedCalendarDate.Date;
+            var tarih = DateTime.Today.AddDays(i);
+            var active = tarih.Date == _selectedCalendarDate.Date;
             var dayButton = new Button
             {
                 Width = 78,
@@ -1047,22 +1433,22 @@ public class MainForm : Form
                 BackColor = active ? Color.Black : Color.FromArgb(241, 244, 248),
                 ForeColor = active ? Color.White : _ink,
                 FlatStyle = FlatStyle.Flat,
-                Text = $"{date:ddd}\r\n{date:dd}",
+                Text = $"{tarih:ddd}\r\n{tarih:dd}",
                 Font = new Font("Segoe UI", 10.5F, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                Tag = date,
+                Tag = tarih,
                 TabStop = false,
                 TextAlign = ContentAlignment.MiddleCenter
             };
             dayButton.FlatAppearance.BorderSize = 0;
             dayButton.Click += (_, _) =>
             {
-                _selectedCalendarDate = date.Date;
-                foreach (Button button in days.Controls.OfType<Button>())
+                _selectedCalendarDate = tarih.Date;
+                foreach (Button dugme in days.Controls.OfType<Button>())
                 {
-                    var isSelected = button.Tag is DateTime buttonDate && buttonDate.Date == _selectedCalendarDate.Date;
-                    button.BackColor = isSelected ? Color.Black : Color.FromArgb(241, 244, 248);
-                    button.ForeColor = isSelected ? Color.White : _ink;
+                    var isSelected = dugme.Tag is DateTime buttonDate && buttonDate.Date == _selectedCalendarDate.Date;
+                    dugme.BackColor = isSelected ? Color.Black : Color.FromArgb(241, 244, 248);
+                    dugme.ForeColor = isSelected ? Color.White : _ink;
                 }
 
                 onDateSelected?.Invoke(_selectedCalendarDate);
@@ -1071,35 +1457,39 @@ public class MainForm : Form
         }
     }
 
-    private void AddLegend(int left, int top)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void LejantEkle(int left, int top)
     {
-        AddDotLegend(left, top, _green, "MUSAIT");
-        AddDotLegend(left + 120, top, Color.FromArgb(78, 101, 132), "DOLU");
-        AddDotLegend(left + 220, top, _yellow, "TEMIZLIKTE");
+        NoktaliLejantEkle(left, top, _green, "MUSAIT");
+        NoktaliLejantEkle(left + 120, top, Color.FromArgb(78, 101, 132), "DOLU");
+        NoktaliLejantEkle(left + 220, top, _yellow, "TEMİZLİKTE");
     }
 
-    private void AddDotLegend(int left, int top, Color color, string text)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void NoktaliLejantEkle(int left, int top, Color renk, string text)
     {
-        var dot = new Panel { Left = left + 6, Top = top + 5, Width = 14, Height = 14, BackColor = color };
-        var label = CreateLabel(text, left + 28, top, 10, FontStyle.Bold, _ink);
+        var dot = new Panel { Left = left + 6, Top = top + 5, Width = 14, Height = 14, BackColor = renk };
+        var etiket = EtiketOlustur(text, left + 28, top, 10, FontStyle.Bold, _ink);
         _contentPanel.Controls.Add(dot);
-        _contentPanel.Controls.Add(label);
+        _contentPanel.Controls.Add(etiket);
     }
 
-    private Panel CreateStatCard(string title, string value, string detail, Color accent)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private Panel IstatistikKartiOlustur(string baslikMetni, string deger, string detay, Color accent)
     {
-        var panel = CreateCard(0, 0, 245, 120, accent);
-        panel.FillColor = Mix(Color.White, accent, 0.08);
-        panel.BorderColor = Mix(Color.White, accent, 0.34);
-        panel.Margin = new Padding(0, 0, 14, 0);
-        panel.Controls.Add(new Panel { Left = 24, Top = 22, Width = 42, Height = 28, BackColor = Mix(Color.White, accent, 0.18) });
-        panel.Controls.Add(CreateLabel(title, 92, 24, 9, FontStyle.Bold, accent, 150));
-        panel.Controls.Add(CreateLabel(value, 24, 58, 26, FontStyle.Bold, _ink));
-        panel.Controls.Add(CreateLabel(detail, 94, 72, 10, FontStyle.Regular, _muted));
-        return panel;
+        var pano = KartOlustur(0, 0, 245, 120, accent);
+        pano.FillColor = RenkleriKaristir(Color.White, accent, 0.08);
+        pano.BorderColor = RenkleriKaristir(Color.White, accent, 0.34);
+        pano.Margin = new Padding(0, 0, 14, 0);
+        pano.Controls.Add(new Panel { Left = 24, Top = 22, Width = 42, Height = 28, BackColor = RenkleriKaristir(Color.White, accent, 0.18) });
+        pano.Controls.Add(EtiketOlustur(baslikMetni, 92, 24, 9, FontStyle.Bold, accent, 150));
+        pano.Controls.Add(EtiketOlustur(deger, 24, 58, 26, FontStyle.Bold, _ink));
+        pano.Controls.Add(EtiketOlustur(detay, 94, 72, 10, FontStyle.Regular, _muted));
+        return pano;
     }
 
-    private void DrawRevenueBars(Graphics graphics, Rectangle bounds)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void GelirCubuklariniCiz(Graphics graphics, Rectangle bounds)
     {
         using var brush = new SolidBrush(Color.FromArgb(236, 239, 244));
         using var activeBrush = new SolidBrush(_green);
@@ -1115,9 +1505,25 @@ public class MainForm : Form
         }
     }
 
-    private Button CreateActionButton(string text, int left, int top, int width, Color backColor, Action action, Color? foreColor = null)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private Button IslemDugmesiOlustur(string text, int left, int top, int width, Color backColor, Action islem, Color? foreColor = null)
     {
-        var button = new Button
+        if (backColor == Color.White)
+        {
+            backColor = _greenSoft;
+        }
+
+        if (backColor == _navy)
+        {
+            backColor = _green;
+        }
+
+        if (backColor == Color.FromArgb(249, 232, 232) || foreColor == Color.FromArgb(190, 45, 45))
+        {
+            backColor = _danger;
+        }
+
+        var dugme = new Button
         {
             Text = text,
             Left = left,
@@ -1125,21 +1531,22 @@ public class MainForm : Form
             Width = width,
             Height = 42,
             BackColor = backColor,
-            ForeColor = foreColor ?? Color.White,
+            ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 10F, FontStyle.Bold),
             Cursor = Cursors.Hand,
             TabStop = false
         };
-        button.FlatAppearance.BorderSize = backColor == Color.White ? 1 : 0;
-        button.FlatAppearance.BorderColor = _line;
-        button.Click += (_, _) => action();
-        return button;
+        dugme.FlatAppearance.BorderSize = 0;
+        dugme.FlatAppearance.BorderColor = _line;
+        dugme.Click += (_, _) => islem();
+        return dugme;
     }
 
-    private Label CreateBadge(string text, int left, int top, int width, Color back, Color fore)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private Label RozetOlustur(string text, int left, int top, int width, Color back, Color fore)
     {
-        var label = new Label
+        var etiket = new Label
         {
             Text = text,
             Left = left,
@@ -1151,10 +1558,11 @@ public class MainForm : Form
             ForeColor = fore,
             Font = new Font("Segoe UI", 9F, FontStyle.Bold)
         };
-        return label;
+        return etiket;
     }
 
-    private Label CreateLabel(string text, int left, int top, float size, FontStyle style, Color color, int width = 260)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private Label EtiketOlustur(string text, int left, int top, float size, FontStyle style, Color renk, int width = 260)
     {
         return new Label
         {
@@ -1165,12 +1573,13 @@ public class MainForm : Form
             Height = Math.Max(26, (int)Math.Ceiling(size * 2.05)),
             AutoEllipsis = true,
             Font = new Font("Segoe UI", size, style),
-            ForeColor = color,
+            ForeColor = renk,
             BackColor = Color.Transparent
         };
     }
 
-    private CardPanel CreateCard(int left, int top, int width, int height, Color? accent = null)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private CardPanel KartOlustur(int left, int top, int width, int height, Color? accent = null)
     {
         return new CardPanel
         {
@@ -1186,9 +1595,9 @@ public class MainForm : Form
         };
     }
 
-    private DataGridView CreateGrid<T>(int left, int top, int width, int height)
+    private DataGridView TabloOlustur<T>(int left, int top, int width, int height)
     {
-        var grid = new DataGridView
+        var tablo = new DataGridView
         {
             Left = left,
             Top = top,
@@ -1206,21 +1615,23 @@ public class MainForm : Form
             RowHeadersVisible = false,
             EnableHeadersVisualStyles = false
         };
-        grid.ColumnHeadersDefaultCellStyle.BackColor = _navy;
-        grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
-        grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        grid.ColumnHeadersHeight = 34;
-        grid.DefaultCellStyle.Font = new Font("Segoe UI", 9.5F);
-        grid.DefaultCellStyle.BackColor = Color.White;
-        grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(247, 251, 249);
-        grid.DefaultCellStyle.SelectionBackColor = _greenSoft;
-        grid.DefaultCellStyle.SelectionForeColor = _ink;
-        grid.GridColor = _line;
-        grid.RowTemplate.Height = 30;
-        return grid;
+        tablo.ColumnHeadersDefaultCellStyle.BackColor = _navy;
+        tablo.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+        tablo.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        tablo.ColumnHeadersHeight = 34;
+        tablo.DefaultCellStyle.Font = new Font("Segoe UI", 9.5F);
+        tablo.DefaultCellStyle.BackColor = Color.White;
+        tablo.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(247, 251, 249);
+        tablo.DefaultCellStyle.SelectionBackColor = _greenSoft;
+        tablo.DefaultCellStyle.SelectionForeColor = _ink;
+        tablo.GridColor = _line;
+        tablo.RowTemplate.Height = 30;
+        tablo.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
+        return tablo;
     }
 
-    private static Color Mix(Color baseColor, Color overlay, double overlayAmount)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static Color RenkleriKaristir(Color baseColor, Color overlay, double overlayAmount)
     {
         overlayAmount = Math.Clamp(overlayAmount, 0, 1);
         var baseAmount = 1 - overlayAmount;
@@ -1230,9 +1641,10 @@ public class MainForm : Form
             (int)((baseColor.B * baseAmount) + (overlay.B * overlayAmount)));
     }
 
-    private TextBox AddTextBox(Control parent, string label, int left, int top, int width)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private TextBox MetinKutusuEkle(Control parent, string etiket, int left, int top, int width)
     {
-        parent.Controls.Add(CreateLabel(label, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
+        parent.Controls.Add(EtiketOlustur(etiket, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
         var textBox = new TextBox
         {
             Left = left,
@@ -1246,10 +1658,11 @@ public class MainForm : Form
         return textBox;
     }
 
-    private NumericUpDown AddNumeric(Control parent, string label, int left, int top, int width, decimal min, decimal max)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private NumericUpDown SayisalAlanEkle(Control parent, string etiket, int left, int top, int width, decimal min, decimal max)
     {
-        parent.Controls.Add(CreateLabel(label, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
-        var number = new NumericUpDown
+        parent.Controls.Add(EtiketOlustur(etiket, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
+        var sayiAlani = new NumericUpDown
         {
             Left = left,
             Top = top,
@@ -1262,31 +1675,32 @@ public class MainForm : Form
             ThousandsSeparator = true,
             Font = new Font("Segoe UI", 10F)
         };
-        parent.Controls.Add(number);
-        return number;
+        parent.Controls.Add(sayiAlani);
+        return sayiAlani;
     }
 
-    private DateTimePicker AddDate(Control parent, string label, int left, int top, int width, DateTime value)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private DateTimePicker TarihAlaniEkle(Control parent, string etiket, int left, int top, int width, DateTime deger)
     {
-        parent.Controls.Add(CreateLabel(label, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
-        var picker = new DateTimePicker
+        parent.Controls.Add(EtiketOlustur(etiket, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
+        var tarihSecici = new DateTimePicker
         {
             Left = left,
             Top = top,
             Width = width,
             Height = 34,
             Format = DateTimePickerFormat.Short,
-            Value = value,
+            Value = deger,
             Font = new Font("Segoe UI", 10F)
         };
-        parent.Controls.Add(picker);
-        return picker;
+        parent.Controls.Add(tarihSecici);
+        return tarihSecici;
     }
 
-    private ComboBox AddCombo<T>(Control parent, string label, int left, int top, int width, List<T> data, string? displayMember, string? valueMember)
+    private ComboBox SecimKutusuEkle<T>(Control parent, string etiket, int left, int top, int width, List<T> data, string? displayMember, string? valueMember)
     {
-        parent.Controls.Add(CreateLabel(label, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
-        var combo = new ComboBox
+        parent.Controls.Add(EtiketOlustur(etiket, left, top - 30, 9.5F, FontStyle.Bold, _ink, width));
+        var secimKutusu = new ComboBox
         {
             Left = left,
             Top = top,
@@ -1298,79 +1712,314 @@ public class MainForm : Form
         };
         if (!string.IsNullOrWhiteSpace(displayMember))
         {
-            combo.DisplayMember = displayMember;
+            secimKutusu.DisplayMember = displayMember;
         }
 
         if (!string.IsNullOrWhiteSpace(valueMember))
         {
-            combo.ValueMember = valueMember;
+            secimKutusu.ValueMember = valueMember;
         }
 
-        parent.Controls.Add(combo);
-        return combo;
+        parent.Controls.Add(secimKutusu);
+        return secimKutusu;
     }
 
-    private void AddSettingsRow(Control parent, string title, string detail, int top)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void FinansalRaporuDisaAktar()
     {
-        var row = CreateCard(32, top, parent.Width - 64, 62);
-        parent.Controls.Add(row);
-        row.Controls.Add(CreateLabel(title, 20, 10, 13, FontStyle.Bold, _ink, row.Width - 80));
-        row.Controls.Add(CreateLabel(detail, 20, 34, 9.5F, FontStyle.Regular, _muted, row.Width - 80));
-        row.Controls.Add(CreateLabel(">", row.Width - 45, 18, 16, FontStyle.Bold, _muted, 24));
+        using var pencere = new SaveFileDialog
+        {
+            Title = "Finansal raporu kaydet",
+            Filter = "Excel dosyası (*.xlsx)|*.xlsx",
+            FileName = $"TinyTrack_Finansal_Rapor_{DateTime.Now:yyyyMMdd_HHmm}.xlsx",
+            AddExtension = true,
+            DefaultExt = "xlsx"
+        };
+
+        if (pencere.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var musteriler = _musteriManager.MusterileriGetir();
+        var rezervasyonlar = _rezervasyonManager.RezervasyonlariGetir();
+        var varliklar = _varlikManager.VarliklariGetir();
+        var odemeler = _odemeManager.OdemeleriGetir();
+        var reservationsByCustomer = rezervasyonlar
+            .GroupBy(r => r.MusteriID)
+            .ToDictionary(g => g.Key, g => g.OrderBy(r => r.BasTarih).ToList());
+        var assetById = varliklar.ToDictionary(v => v.VarlikID);
+        var paidByReservation = odemeler
+            .GroupBy(o => o.RezervasyonID)
+            .ToDictionary(g => g.Key, g => g.Sum(o => o.Ucret));
+        var totalRevenue = odemeler.Sum(o => o.Ucret);
+
+        using var calismaKitabi = new XLWorkbook();
+        var detay = calismaKitabi.Worksheets.Add("Musteri Raporu");
+        ExcelBasligiYaz(detay, "TinyTrack Finansal Müşteri Raporu", 8);
+        detay.Cell(3, 1).Value = "Müşteri Adı";
+        detay.Cell(3, 2).Value = "Müşteri Soyadı";
+        detay.Cell(3, 3).Value = "T.C. Kimlik No";
+        detay.Cell(3, 4).Value = "Rezervasyon Gün Sayısı";
+        detay.Cell(3, 5).Value = "Varlık Birim Fiyatı";
+        detay.Cell(3, 6).Value = "Kalınan Varlık";
+        detay.Cell(3, 7).Value = "Varlık Tipi";
+        detay.Cell(3, 8).Value = "Toplam Ödeme";
+
+        var satir = 4;
+        foreach (var musteri in musteriler.OrderBy(c => c.Ad).ThenBy(c => c.Soyad))
+        {
+            if (!reservationsByCustomer.TryGetValue(musteri.MusteriID, out var customerReservations) || customerReservations.Count == 0)
+            {
+                detay.Cell(satir, 1).Value = musteri.Ad;
+                detay.Cell(satir, 2).Value = musteri.Soyad;
+                detay.Cell(satir, 3).Value = musteri.KimlikNo;
+                detay.Cell(satir, 8).Value = 0;
+                satir++;
+                continue;
+            }
+
+            foreach (var rezervasyon in customerReservations)
+            {
+                assetById.TryGetValue(rezervasyon.VarlikID, out var varlik);
+                detay.Cell(satir, 1).Value = musteri.Ad;
+                detay.Cell(satir, 2).Value = musteri.Soyad;
+                detay.Cell(satir, 3).Value = musteri.KimlikNo;
+                detay.Cell(satir, 4).Value = rezervasyon.GeceSayisi;
+                detay.Cell(satir, 5).Value = varlik?.GunlukUcret ?? 0;
+                detay.Cell(satir, 6).Value = varlik?.Ad ?? rezervasyon.VarlikAdi;
+                detay.Cell(satir, 7).Value = varlik?.VarlikTipi ?? string.Empty;
+                detay.Cell(satir, 8).Value = paidByReservation.GetValueOrDefault(rezervasyon.RezervasyonID);
+                satir++;
+            }
+        }
+
+        ExcelTablosunuBicimlendir(detay, 3, 1, Math.Max(3, satir - 1), 8);
+        detay.Column(5).Style.NumberFormat.Format = "#,##0.00 ₺";
+        detay.Column(8).Style.NumberFormat.Format = "#,##0.00 ₺";
+
+        var summary = calismaKitabi.Worksheets.Add("Finans Ozeti");
+        ExcelBasligiYaz(summary, "Finansal Özet", 2);
+        summary.Cell(3, 1).Value = "Gösterge";
+        summary.Cell(3, 2).Value = "Değer";
+        summary.Cell(4, 1).Value = "Toplam Kazanç";
+        summary.Cell(4, 2).Value = totalRevenue;
+        summary.Cell(5, 1).Value = "Toplam Müşteri";
+        summary.Cell(5, 2).Value = musteriler.Count;
+        summary.Cell(6, 1).Value = "Toplam Rezervasyon";
+        summary.Cell(6, 2).Value = rezervasyonlar.Count;
+        summary.Cell(7, 1).Value = "Toplam Ödeme Kaydı";
+        summary.Cell(7, 2).Value = odemeler.Count;
+        ExcelTablosunuBicimlendir(summary, 3, 1, 7, 2);
+        summary.Cell(4, 2).Style.NumberFormat.Format = "#,##0.00 ₺";
+
+        var monthly = calismaKitabi.Worksheets.Add("Aylik Kazanc");
+        ExcelBasligiYaz(monthly, "Aylık Kazanç", 2);
+        monthly.Cell(3, 1).Value = "Ay";
+        monthly.Cell(3, 2).Value = "Kazanç";
+        satir = 4;
+        foreach (var item in odemeler
+            .GroupBy(o => new DateTime(o.OdemeTarihi.Year, o.OdemeTarihi.Month, 1))
+            .OrderBy(g => g.Key))
+        {
+            monthly.Cell(satir, 1).Value = item.Key.ToString("MMMM yyyy", new CultureInfo("tr-TR"));
+            monthly.Cell(satir, 2).Value = item.Sum(o => o.Ucret);
+            satir++;
+        }
+
+        ExcelTablosunuBicimlendir(monthly, 3, 1, Math.Max(3, satir - 1), 2);
+        monthly.Column(2).Style.NumberFormat.Format = "#,##0.00 ₺";
+
+        var byAssetType = calismaKitabi.Worksheets.Add("Varlik Tipi Kazanc");
+        ExcelBasligiYaz(byAssetType, "Varlık Tipine Göre Kazanç", 2);
+        byAssetType.Cell(3, 1).Value = "Varlık Tipi";
+        byAssetType.Cell(3, 2).Value = "Kazanç";
+        satir = 4;
+        var revenueByAssetType = odemeler
+            .Join(rezervasyonlar, odeme => odeme.RezervasyonID, rezervasyon => rezervasyon.RezervasyonID, (odeme, rezervasyon) => new { odeme, rezervasyon })
+            .Join(varliklar, x => x.rezervasyon.VarlikID, varlik => varlik.VarlikID, (x, varlik) => new { varlik.VarlikTipi, x.odeme.Ucret })
+            .GroupBy(x => x.VarlikTipi)
+            .OrderByDescending(g => g.Sum(x => x.Ucret));
+        foreach (var item in revenueByAssetType)
+        {
+            byAssetType.Cell(satir, 1).Value = item.Key;
+            byAssetType.Cell(satir, 2).Value = item.Sum(x => x.Ucret);
+            satir++;
+        }
+
+        ExcelTablosunuBicimlendir(byAssetType, 3, 1, Math.Max(3, satir - 1), 2);
+        byAssetType.Column(2).Style.NumberFormat.Format = "#,##0.00 ₺";
+
+        foreach (var sayfa in calismaKitabi.Worksheets)
+        {
+            sayfa.Columns().AdjustToContents(12, 42);
+            sayfa.SheetView.FreezeRows(3);
+        }
+
+        calismaKitabi.SaveAs(pencere.FileName);
+        MessageBox.Show($"Finansal rapor oluşturuldu:\n{pencere.FileName}", "TinyTrack ERP", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
-    private void HideColumns(DataGridView grid, params string[] names)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void KullanimKosullariPenceresiniGoster()
+    {
+        const string terms = """
+        TinyTrack ERP Kullanım Koşulları
+
+        Bu yazılım ticari kullanım amacıyla geliştirilmiş özel bir işletme yönetim sistemidir. Yazılımın lisanssız, izinsiz, kopyalanmış, çoğaltılmış, dağıtılmış veya yetkisiz şekilde kullanıldığının tespiti halinde ilgili kişi ve kurumlar hakkında yasal işlem başlatılabilir.
+
+        Kullanıcı; yazılımı yalnızca kendisine tanımlanan yetki, lisans ve kullanım kapsamı içinde kullanmayı kabul eder. Yazılım kaynak kodlarının, veritabanı yapısının, ekran tasarımlarının, raporlarının veya iş akışlarının izinsiz olarak kopyalanması, tersine mühendislik yoluyla incelenmesi, üçüncü kişilere devredilmesi ya da farklı bir üründe kullanılması yasaktır.
+
+        Sisteme girilen müşteri, rezervasyon, ödeme ve işletme verilerinin doğruluğu ile kişisel verilerin mevzuata uygun şekilde işlenmesi kullanıcının sorumluluğundadır. TinyTrack ERP, kullanıcı tarafından hatalı girilen verilerden, yetkisiz erişimlerden, cihaz veya dosya kayıplarından, yedekleme yapılmamasından ya da hatalı kullanım nedeniyle oluşabilecek ticari zararlardan sorumlu tutulamaz.
+
+        Yazılımda yer alan finansal raporlar, ödeme kayıtları ve operasyonel çıktılar bilgilendirme ve işletme takibi amacı taşır. Resmi muhasebe, vergi beyanı veya hukuki bildirim süreçlerinde nihai sorumluluk kullanıcıya aittir; gerektiğinde yetkili mali müşavir veya hukuk danışmanından destek alınmalıdır.
+
+        Yazılımın kullanılması, bu koşulların okunduğu, anlaşıldığı ve kabul edildiği anlamına gelir. Koşulları kabul etmeyen kullanıcıların yazılımı kullanmaması gerekir.
+        """;
+
+        MessageBox.Show(
+            terms,
+            "Kullanım Koşulları ve Lisans Uyarısı",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void ExcelBasligiYaz(IXLWorksheet sayfa, string baslikMetni, int columns)
+    {
+        var titleRange = sayfa.Range(1, 1, 1, columns);
+        titleRange.Merge();
+        titleRange.Value = baslikMetni;
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 18;
+        titleRange.Style.Font.FontColor = XLColor.White;
+        titleRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#6d47d5");
+        titleRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        titleRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        sayfa.Row(1).Height = 30;
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void ExcelTablosunuBicimlendir(IXLWorksheet sayfa, int firstRow, int firstColumn, int lastRow, int lastColumn)
+    {
+        var aralik = sayfa.Range(firstRow, firstColumn, lastRow, lastColumn);
+        aralik.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        aralik.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        aralik.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+        var baslik = sayfa.Range(firstRow, firstColumn, firstRow, lastColumn);
+        baslik.Style.Font.Bold = true;
+        baslik.Style.Font.FontColor = XLColor.White;
+        baslik.Style.Fill.BackgroundColor = XLColor.FromHtml("#111827");
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void AyarSatiriEkle(Control parent, string baslikMetni, string detay, int top, Action? islem = null)
+    {
+        var satir = KartOlustur(32, top, parent.Width - 64, 62);
+        parent.Controls.Add(satir);
+        satir.Controls.Add(EtiketOlustur(baslikMetni, 20, 10, 13, FontStyle.Bold, _ink, satir.Width - 80));
+        satir.Controls.Add(EtiketOlustur(detay, 20, 34, 9.5F, FontStyle.Regular, _muted, satir.Width - 80));
+        satir.Controls.Add(EtiketOlustur(">", satir.Width - 45, 18, 16, FontStyle.Bold, _muted, 24));
+
+        if (islem is null)
+        {
+            return;
+        }
+
+        satir.Cursor = Cursors.Hand;
+        satir.Click += (_, _) => islem();
+        foreach (Control child in satir.Controls)
+        {
+            child.Cursor = Cursors.Hand;
+            child.Click += (_, _) => islem();
+        }
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void SutunlariGizle(DataGridView tablo, params string[] names)
     {
         foreach (var name in names)
         {
-            if (grid.Columns.Contains(name))
+            if (tablo.Columns.Contains(name))
             {
-                grid.Columns[name]!.Visible = false;
+                tablo.Columns[name]!.Visible = false;
             }
         }
     }
 
-    private void SetColumnHeaders(DataGridView grid, params (string Column, string Header)[] headers)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void SutunBasliklariniAyarla(DataGridView tablo, params (string Column, string Header)[] headers)
     {
-        foreach (var (column, header) in headers)
+        foreach (var (sutun, baslik) in headers)
         {
-            if (grid.Columns.Contains(column))
+            if (tablo.Columns.Contains(sutun))
             {
-                grid.Columns[column]!.HeaderText = header;
+                var gridColumn = tablo.Columns[sutun]!;
+                gridColumn.HeaderText = baslik;
+                gridColumn.MinimumWidth = Math.Max(gridColumn.MinimumWidth, Math.Min(140, (baslik.Length * 9) + 28));
             }
+        }
+
+        foreach (DataGridViewColumn sutun in tablo.Columns)
+        {
+            if (!sutun.Visible)
+            {
+                continue;
+            }
+
+            sutun.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
         }
     }
 
-    private int ContentWidth()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private int IcerikGenisligi()
     {
-        return Math.Max(1040, _contentPanel.ClientSize.Width - _contentPanel.Padding.Horizontal - 18);
+        return Math.Max(620, _contentPanel.ClientSize.Width - _contentPanel.Padding.Horizontal - 18);
     }
 
-    private static string DigitsOnly(string text)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static string SadeceRakamlar(string text)
     {
         return new string(text.Where(char.IsDigit).ToArray());
     }
 
-    private static string ShortName(string text)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static DateTime HaftaBaslangici(DateTime tarih)
+    {
+        var diff = ((int)tarih.DayOfWeek + 6) % 7;
+        return tarih.Date.AddDays(-diff);
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static bool RezervasyonTarihiKapsar(Rezervasyon rezervasyon, DateTime tarih)
+    {
+        return rezervasyon.BasTarih.Date <= tarih.Date && tarih.Date < rezervasyon.SonTarih.Date;
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static string KisaAd(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            return "Yonetici";
+            return "Yönetici";
         }
 
-        return text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Yonetici";
+        return text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Yönetici";
     }
 
-    private bool Confirm(string message)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private bool Onayla(string mesaj)
     {
-        return MessageBox.Show(message, "TinyTrack ERP", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+        return MessageBox.Show(mesaj, "TinyTrack ERP", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
     }
 
-    private void Safe(Action action, string? successMessage = null)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void GuvenliCalistir(Action islem, string? successMessage = null)
     {
         try
         {
-            action();
+            islem();
             if (!string.IsNullOrWhiteSpace(successMessage))
             {
                 MessageBox.Show(successMessage, "TinyTrack ERP", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -1386,13 +2035,20 @@ public class MainForm : Form
         }
     }
 
-    private void ShowPageError(Exception ex)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void SayfaHatasiniGoster(Exception ex)
     {
-        _contentPanel.Controls.Add(CreateLabel("Sayfa yuklenemedi", 0, 90, 22, FontStyle.Bold, _ink, 500));
-        _contentPanel.Controls.Add(CreateLabel(ex.Message, 0, 132, 11, FontStyle.Regular, _muted, 760));
+        _contentPanel.Controls.Add(EtiketOlustur("Sayfa yuklenemedi", 0, 90, 22, FontStyle.Bold, _ink, 500));
+        _contentPanel.Controls.Add(EtiketOlustur(ex.Message, 0, 132, 11, FontStyle.Regular, _muted, 760));
+    }
+
+    private void MainForm_Load(object sender, EventArgs e)
+    {
+
     }
 }
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class CardPanel : Panel
 {
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -1407,6 +2063,7 @@ public class CardPanel : Panel
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color AccentColor { get; set; } = Color.Transparent;
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
@@ -1427,6 +2084,7 @@ public class CardPanel : Panel
         e.Graphics.DrawPath(pen, path);
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     protected override void OnResize(EventArgs eventargs)
     {
         base.OnResize(eventargs);

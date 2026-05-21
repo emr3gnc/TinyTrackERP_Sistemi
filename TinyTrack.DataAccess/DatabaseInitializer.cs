@@ -1,197 +1,229 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public static class DatabaseInitializer
 {
-    public static void EnsureCreatedAndSeeded()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public static void OlusturuldugunuVeOrnekVerininHazirlandiginiGarantiEt()
     {
-        EnsureDatabase();
-        EnsureTables();
-        SeedData();
+        var shouldSeed = OrnekVeriEklenmeliMi();
+        TablolariGarantiEt();
+        if (shouldSeed)
+        {
+            OrnekVeriEkle();
+        }
     }
 
-    private static void EnsureDatabase()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static bool OrnekVeriEklenmeliMi()
     {
-        var builder = new SqlConnectionStringBuilder(DbHelper.ConnectionString);
-        var databaseName = builder.InitialCatalog;
-        builder.InitialCatalog = "master";
-
-        using var connection = new SqlConnection(builder.ConnectionString);
-        using var command = new SqlCommand(
-            "IF DB_ID(@databaseName) IS NULL EXEC('CREATE DATABASE [' + @databaseName + ']')",
-            connection);
-        command.Parameters.AddWithValue("@databaseName", databaseName);
-        connection.Open();
-        command.ExecuteNonQuery();
+        using var baglanti = DbHelper.BaglantiOlustur();
+        using var komut = baglanti.CreateCommand();
+        komut.CommandText = "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'musteri'";
+        return Convert.ToInt32(komut.ExecuteScalar()) == 0;
     }
 
-    private static void EnsureTables()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void TablolariGarantiEt()
     {
         var statements = new[]
         {
             """
-            IF OBJECT_ID('dbo.musteri', 'U') IS NULL
-            CREATE TABLE dbo.musteri (
-                musteriID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                ad NVARCHAR(60) NOT NULL,
-                soyad NVARCHAR(60) NOT NULL,
-                telefon NVARCHAR(20) NOT NULL,
-                adres NVARCHAR(250) NOT NULL,
-                kimlikno NVARCHAR(11) NOT NULL UNIQUE,
-                kayitTarihi DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+            CREATE TABLE IF NOT EXISTS musteri (
+                musteriID TEXT NOT NULL PRIMARY KEY,
+                ad TEXT NOT NULL,
+                soyad TEXT NOT NULL,
+                telefon TEXT NOT NULL,
+                adres TEXT NOT NULL,
+                il TEXT NOT NULL DEFAULT '',
+                ilce TEXT NOT NULL DEFAULT '',
+                acikAdres TEXT NOT NULL DEFAULT '',
+                postaKodu TEXT NOT NULL DEFAULT '',
+                kimlikno TEXT NOT NULL UNIQUE,
+                kayitTarihi TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """,
             """
-            IF OBJECT_ID('dbo.varlik', 'U') IS NULL
-            CREATE TABLE dbo.varlik (
-                varlikID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                varliktipi NVARCHAR(40) NOT NULL,
-                ad NVARCHAR(80) NOT NULL,
-                kapasite INT NOT NULL,
-                gunlukucret DECIMAL(12,2) NOT NULL,
-                durum NVARCHAR(20) NOT NULL,
-                konum NVARCHAR(120) NOT NULL DEFAULT ''
+            CREATE TABLE IF NOT EXISTS varlik (
+                varlikID TEXT NOT NULL PRIMARY KEY,
+                varliktipi TEXT NOT NULL,
+                ad TEXT NOT NULL,
+                kapasite INTEGER NOT NULL,
+                gunlukucret REAL NOT NULL,
+                durum TEXT NOT NULL,
+                konum TEXT NOT NULL DEFAULT ''
             )
             """,
             """
-            IF OBJECT_ID('dbo.rezervasyon', 'U') IS NULL
-            CREATE TABLE dbo.rezervasyon (
-                rezervasyonID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                musteriID NVARCHAR(20) NOT NULL,
-                varlikID NVARCHAR(20) NOT NULL,
-                bastarih DATE NOT NULL,
-                sontarih DATE NOT NULL,
-                toplamucret DECIMAL(12,2) NOT NULL,
-                durum NVARCHAR(20) NOT NULL,
-                kayitTarihi DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-                CONSTRAINT FK_rezervasyon_musteri FOREIGN KEY (musteriID) REFERENCES dbo.musteri(musteriID),
-                CONSTRAINT FK_rezervasyon_varlik FOREIGN KEY (varlikID) REFERENCES dbo.varlik(varlikID)
+            CREATE TABLE IF NOT EXISTS rezervasyon (
+                rezervasyonID TEXT NOT NULL PRIMARY KEY,
+                musteriID TEXT NOT NULL,
+                varlikID TEXT NOT NULL,
+                bastarih TEXT NOT NULL,
+                sontarih TEXT NOT NULL,
+                toplamucret REAL NOT NULL,
+                durum TEXT NOT NULL,
+                kayitTarihi TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT FK_rezervasyon_musteri FOREIGN KEY (musteriID) REFERENCES musteri(musteriID),
+                CONSTRAINT FK_rezervasyon_varlik FOREIGN KEY (varlikID) REFERENCES varlik(varlikID)
             )
             """,
             """
-            IF OBJECT_ID('dbo.odeme', 'U') IS NULL
-            CREATE TABLE dbo.odeme (
-                odemeID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                rezervasyonID NVARCHAR(20) NOT NULL,
-                ucret DECIMAL(12,2) NOT NULL,
-                odemetarihi DATE NOT NULL,
-                odemetipi NVARCHAR(30) NOT NULL,
-                aciklama NVARCHAR(200) NOT NULL DEFAULT '',
-                CONSTRAINT FK_odeme_rezervasyon FOREIGN KEY (rezervasyonID) REFERENCES dbo.rezervasyon(rezervasyonID)
+            CREATE TABLE IF NOT EXISTS odeme (
+                odemeID TEXT NOT NULL PRIMARY KEY,
+                rezervasyonID TEXT NOT NULL,
+                ucret REAL NOT NULL,
+                odemetarihi TEXT NOT NULL,
+                odemetipi TEXT NOT NULL,
+                aciklama TEXT NOT NULL DEFAULT '',
+                CONSTRAINT FK_odeme_rezervasyon FOREIGN KEY (rezervasyonID) REFERENCES rezervasyon(rezervasyonID)
             )
             """,
             """
-            IF OBJECT_ID('dbo.operasyon', 'U') IS NULL
-            CREATE TABLE dbo.operasyon (
-                operasyonID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                varlikID NVARCHAR(20) NOT NULL,
-                operasyonTipi NVARCHAR(30) NOT NULL,
-                durum BIT NOT NULL,
-                tarih DATE NOT NULL,
-                notlar NVARCHAR(250) NOT NULL DEFAULT '',
-                CONSTRAINT FK_operasyon_varlik FOREIGN KEY (varlikID) REFERENCES dbo.varlik(varlikID)
+            CREATE TABLE IF NOT EXISTS operasyon (
+                operasyonID TEXT NOT NULL PRIMARY KEY,
+                varlikID TEXT NOT NULL,
+                operasyonTipi TEXT NOT NULL,
+                durum INTEGER NOT NULL,
+                tarih TEXT NOT NULL,
+                notlar TEXT NOT NULL DEFAULT '',
+                CONSTRAINT FK_operasyon_varlik FOREIGN KEY (varlikID) REFERENCES varlik(varlikID)
             )
             """,
             """
-            IF OBJECT_ID('dbo.hizmet', 'U') IS NULL
-            CREATE TABLE dbo.hizmet (
-                hizmetID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                rezervasyonID NVARCHAR(20) NOT NULL,
-                ad NVARCHAR(80) NOT NULL,
-                ucret DECIMAL(12,2) NOT NULL,
-                CONSTRAINT FK_hizmet_rezervasyon FOREIGN KEY (rezervasyonID) REFERENCES dbo.rezervasyon(rezervasyonID)
+            CREATE TABLE IF NOT EXISTS hizmet (
+                hizmetID TEXT NOT NULL PRIMARY KEY,
+                rezervasyonID TEXT NOT NULL,
+                ad TEXT NOT NULL,
+                ucret REAL NOT NULL,
+                CONSTRAINT FK_hizmet_rezervasyon FOREIGN KEY (rezervasyonID) REFERENCES rezervasyon(rezervasyonID)
             )
             """,
             """
-            IF OBJECT_ID('dbo.kullanici', 'U') IS NULL
-            CREATE TABLE dbo.kullanici (
-                kullaniciID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                adSoyad NVARCHAR(100) NOT NULL,
-                email NVARCHAR(120) NOT NULL UNIQUE,
-                sifre NVARCHAR(80) NOT NULL,
-                rol NVARCHAR(40) NOT NULL
+            CREATE TABLE IF NOT EXISTS kullanici (
+                kullaniciID TEXT NOT NULL PRIMARY KEY,
+                adSoyad TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                sifre TEXT NOT NULL,
+                rol TEXT NOT NULL
             )
             """,
             """
-            IF OBJECT_ID('dbo.isletme_ayarlari', 'U') IS NULL
-            CREATE TABLE dbo.isletme_ayarlari (
-                ayarID NVARCHAR(20) NOT NULL PRIMARY KEY,
-                isletmeAdi NVARCHAR(100) NOT NULL,
-                paraBirimi NVARCHAR(40) NOT NULL,
-                dil NVARCHAR(40) NOT NULL,
-                rezervasyonBildirimleri BIT NOT NULL,
-                temizlikUyarilari BIT NOT NULL
+            CREATE TABLE IF NOT EXISTS isletme_ayarlari (
+                ayarID TEXT NOT NULL PRIMARY KEY,
+                isletmeAdi TEXT NOT NULL,
+                paraBirimi TEXT NOT NULL,
+                dil TEXT NOT NULL,
+                rezervasyonBildirimleri INTEGER NOT NULL,
+                temizlikUyarilari INTEGER NOT NULL
             )
             """,
-            """
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_rezervasyon_varlik_tarih' AND object_id = OBJECT_ID('dbo.rezervasyon'))
-            CREATE INDEX IX_rezervasyon_varlik_tarih ON dbo.rezervasyon(varlikID, bastarih, sontarih, durum)
-            """
+            "CREATE INDEX IF NOT EXISTS IX_rezervasyon_varlik_tarih ON rezervasyon(varlikID, bastarih, sontarih, durum)"
         };
 
         foreach (var statement in statements)
         {
-            DbHelper.ExecuteNonQuery(statement);
+            DbHelper.KomutCalistir(statement);
+        }
+
+        SutunuGarantiEt("musteri", "il", "TEXT NOT NULL DEFAULT ''");
+        SutunuGarantiEt("musteri", "ilce", "TEXT NOT NULL DEFAULT ''");
+        SutunuGarantiEt("musteri", "acikAdres", "TEXT NOT NULL DEFAULT ''");
+        SutunuGarantiEt("musteri", "postaKodu", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void SutunuGarantiEt(string table, string sutun, string definition)
+    {
+        var exists = DbHelper.TekDegerCalistir<int>(
+            $"SELECT COUNT(1) FROM pragma_table_info('{table}') WHERE name = @sutun",
+            DbHelper.Parametre("@sutun", sutun));
+        if (exists == 0)
+        {
+            DbHelper.KomutCalistir($"ALTER TABLE {table} ADD COLUMN {sutun} {definition}");
         }
     }
 
-    private static void SeedData()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static void OrnekVeriEkle()
     {
-        DbHelper.ExecuteNonQuery(
+        DbHelper.KomutCalistir(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.kullanici WHERE kullaniciID = 'USR-001')
-            INSERT INTO dbo.kullanici (kullaniciID, adSoyad, email, sifre, rol)
-            VALUES ('USR-001', N'Ahmet Yilmaz', 'admin@tinytrack.local', '123456', N'Yonetici')
+            INSERT INTO kullanici (kullaniciID, adSoyad, email, sifre, rol)
+            SELECT 'USR-001', 'Ahmet Yılmaz', 'admin@tinytrack.local', '123456', 'Yönetici'
+            WHERE NOT EXISTS (SELECT 1 FROM kullanici WHERE kullaniciID = 'USR-001')
             """);
 
-        DbHelper.ExecuteNonQuery(
+        DbHelper.KomutCalistir(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.isletme_ayarlari WHERE ayarID = 'SET-001')
-            INSERT INTO dbo.isletme_ayarlari (ayarID, isletmeAdi, paraBirimi, dil, rezervasyonBildirimleri, temizlikUyarilari)
-            VALUES ('SET-001', N'TinyTrack ERP', N'Turk Lirasi', N'Turkce', 1, 1)
+            INSERT INTO isletme_ayarlari (ayarID, isletmeAdi, paraBirimi, dil, rezervasyonBildirimleri, temizlikUyarilari)
+            SELECT 'SET-001', 'TinyTrack ERP', 'Türk Lirası', 'Türkçe', 1, 1
+            WHERE NOT EXISTS (SELECT 1 FROM isletme_ayarlari WHERE ayarID = 'SET-001')
             """);
 
-        DbHelper.ExecuteNonQuery(
+        DbHelper.KomutCalistir(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.musteri WHERE musteriID = 'MUS-001')
-            INSERT INTO dbo.musteri (musteriID, ad, soyad, telefon, adres, kimlikno)
-            VALUES
-            ('MUS-001', N'Ahmet', N'Yilmaz', '05551234567', N'Kuzey Ormanlari, Sakarya', '10000000146'),
-            ('MUS-002', N'Selim', N'Aras', '05557654321', N'Ege Kiyilari, Mugla', '10000000214')
+            INSERT INTO musteri (musteriID, ad, soyad, telefon, adres, il, ilce, acikAdres, postaKodu, kimlikno)
+            SELECT 'MUS-001', 'Ahmet', 'Yılmaz', '05551234567', 'Kuzey Ormanları, Sakarya', 'Sakarya', 'Adapazarı', 'Kuzey Ormanları', '54000', '10000000146'
+            WHERE NOT EXISTS (SELECT 1 FROM musteri WHERE musteriID = 'MUS-001')
             """);
 
-        DbHelper.ExecuteNonQuery(
+        DbHelper.KomutCalistir(
             """
-            UPDATE dbo.musteri
+            INSERT INTO musteri (musteriID, ad, soyad, telefon, adres, il, ilce, acikAdres, postaKodu, kimlikno)
+            SELECT 'MUS-002', 'Selim', 'Aras', '05557654321', 'Ege Kıyıları, Muğla', 'Muğla', 'Bodrum', 'Ege Kıyıları', '48400', '10000000214'
+            WHERE NOT EXISTS (SELECT 1 FROM musteri WHERE musteriID = 'MUS-002')
+            """);
+
+        DbHelper.KomutCalistir(
+            """
+            UPDATE musteri
             SET kimlikno = '10000000214'
             WHERE musteriID = 'MUS-002' AND kimlikno = '10000000284'
             """);
 
-        DbHelper.ExecuteNonQuery(
+        DbHelper.KomutCalistir(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.varlik WHERE varlikID = 'VAR-001')
-            INSERT INTO dbo.varlik (varlikID, varliktipi, ad, kapasite, gunlukucret, durum, konum)
-            VALUES
-            ('VAR-001', N'Tiny House', N'Tiny House 1', 3, 2500, N'Dolu', N'Kuzey Ormanlari, Sakarya'),
-            ('VAR-002', N'Karavan', N'Caravan 2', 4, 1800, N'Temizlikte', N'Ege Kiyilari, Mugla'),
-            ('VAR-003', N'Bungalov', N'Modern Loft', 2, 3200, N'Musait', N'Abant, Bolu')
+            INSERT INTO varlik (varlikID, varliktipi, ad, kapasite, gunlukucret, durum, konum)
+            SELECT 'VAR-001', 'Tiny House', 'Tiny House 1', 3, 2500, 'Dolu', 'Kuzey Ormanları, Sakarya'
+            WHERE NOT EXISTS (SELECT 1 FROM varlik WHERE varlikID = 'VAR-001')
             """);
 
-        DbHelper.ExecuteNonQuery(
+        DbHelper.KomutCalistir(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.rezervasyon WHERE rezervasyonID = 'REZ-001')
-            INSERT INTO dbo.rezervasyon (rezervasyonID, musteriID, varlikID, bastarih, sontarih, toplamucret, durum)
-            VALUES
-            ('REZ-001', 'MUS-001', 'VAR-001', CAST(GETDATE() AS date), DATEADD(day, 3, CAST(GETDATE() AS date)), 7500, N'Aktif'),
-            ('REZ-002', 'MUS-002', 'VAR-003', DATEADD(day, 5, CAST(GETDATE() AS date)), DATEADD(day, 8, CAST(GETDATE() AS date)), 9600, N'Aktif')
+            INSERT INTO varlik (varlikID, varliktipi, ad, kapasite, gunlukucret, durum, konum)
+            SELECT 'VAR-002', 'Karavan', 'Caravan 2', 4, 1800, 'Temizlikte', 'Ege Kiyilari, Mugla'
+            WHERE NOT EXISTS (SELECT 1 FROM varlik WHERE varlikID = 'VAR-002')
             """);
 
-        DbHelper.ExecuteNonQuery(
+        DbHelper.KomutCalistir(
             """
-            IF NOT EXISTS (SELECT 1 FROM dbo.operasyon WHERE operasyonID = 'OPR-001')
-            INSERT INTO dbo.operasyon (operasyonID, varlikID, operasyonTipi, durum, tarih, notlar)
-            VALUES ('OPR-001', 'VAR-002', N'Temizlik', 0, CAST(GETDATE() AS date), N'Standart cikis temizligi devam ediyor')
+            INSERT INTO varlik (varlikID, varliktipi, ad, kapasite, gunlukucret, durum, konum)
+            SELECT 'VAR-003', 'Bungalov', 'Modern Loft', 2, 3200, 'Musait', 'Abant, Bolu'
+            WHERE NOT EXISTS (SELECT 1 FROM varlik WHERE varlikID = 'VAR-003')
+            """);
+
+        DbHelper.KomutCalistir(
+            """
+            INSERT INTO rezervasyon (rezervasyonID, musteriID, varlikID, bastarih, sontarih, toplamucret, durum)
+            SELECT 'REZ-001', 'MUS-001', 'VAR-001', date('now'), date('now', '+3 day'), 7500, 'Aktif'
+            WHERE NOT EXISTS (SELECT 1 FROM rezervasyon WHERE rezervasyonID = 'REZ-001')
+            """);
+
+        DbHelper.KomutCalistir(
+            """
+            INSERT INTO rezervasyon (rezervasyonID, musteriID, varlikID, bastarih, sontarih, toplamucret, durum)
+            SELECT 'REZ-002', 'MUS-002', 'VAR-003', date('now', '+5 day'), date('now', '+8 day'), 9600, 'Aktif'
+            WHERE NOT EXISTS (SELECT 1 FROM rezervasyon WHERE rezervasyonID = 'REZ-002')
+            """);
+
+        DbHelper.KomutCalistir(
+            """
+            INSERT INTO operasyon (operasyonID, varlikID, operasyonTipi, durum, tarih, notlar)
+            SELECT 'OPR-001', 'VAR-002', 'Temizlik', 0, date('now'), 'Standart cikis temizligi devam ediyor'
+            WHERE NOT EXISTS (SELECT 1 FROM operasyon WHERE operasyonID = 'OPR-001')
             """);
     }
 }

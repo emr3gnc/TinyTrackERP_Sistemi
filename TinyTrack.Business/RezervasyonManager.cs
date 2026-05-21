@@ -1,8 +1,9 @@
-using TinyTrack.DataAccess;
+﻿using TinyTrack.DataAccess;
 using TinyTrack.Entities;
 
 namespace TinyTrack.Business;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class RezervasyonManager
 {
     private readonly RezervasyonDal _rezervasyonDal = new();
@@ -11,95 +12,102 @@ public class RezervasyonManager
     private readonly HizmetDal _hizmetDal = new();
     private readonly OperasyonDal _operasyonDal = new();
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public List<Rezervasyon> RezervasyonlariGetir()
     {
-        return _rezervasyonDal.GetAll();
+        return _rezervasyonDal.TumunuGetir();
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public Rezervasyon? RezervasyonGetir(string rezervasyonID)
     {
-        return _rezervasyonDal.GetById(rezervasyonID);
+        return _rezervasyonDal.IdIleGetir(rezervasyonID);
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool RezervasyonEkle(Rezervasyon rezervasyon)
     {
-        Validate(rezervasyon);
+        Dogrula(rezervasyon);
         if (CakismayiKontrolEt(rezervasyon.VarlikID, rezervasyon.BasTarih, rezervasyon.SonTarih))
         {
-            throw new BusinessRuleException("Secilen tarih araliginda bu varlik icin aktif rezervasyon var.");
+            throw new BusinessRuleException("SeÃ§ilen tarih aralÄ±ÄŸÄ±nda bu varlÄ±k iÃ§in aktif rezervasyon var.");
         }
 
         rezervasyon.RezervasyonID = string.IsNullOrWhiteSpace(rezervasyon.RezervasyonID)
-            ? IdGenerator.NewId("REZ")
+            ? IdGenerator.YeniId("REZ")
             : rezervasyon.RezervasyonID;
         rezervasyon.Durum = RezervasyonDurumu.Aktif;
         rezervasyon.ToplamUcret = ToplamUcretHesapla(rezervasyon.VarlikID, rezervasyon.BasTarih, rezervasyon.SonTarih, 0);
         rezervasyon.KayitTarihi = DateTime.Now;
 
-        var result = _rezervasyonDal.Insert(rezervasyon);
-        _varlikDal.UpdateDurum(rezervasyon.VarlikID, VarlikDurumu.Dolu);
-        return result;
+        var sonuc = _rezervasyonDal.Ekle(rezervasyon);
+        _varlikDal.DurumuGuncelle(rezervasyon.VarlikID, VarlikDurumu.Dolu);
+        return sonuc;
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool RezervasyonGuncelle(Rezervasyon rezervasyon)
     {
         if (string.IsNullOrWhiteSpace(rezervasyon.RezervasyonID))
         {
-            throw new BusinessRuleException("Guncellenecek rezervasyon secilmelidir.");
+            throw new BusinessRuleException("GÃ¼ncellenecek rezervasyon seÃ§ilmelidir.");
         }
 
-        var eskiRezervasyon = _rezervasyonDal.GetById(rezervasyon.RezervasyonID)
-            ?? throw new BusinessRuleException("Rezervasyon bulunamadi.");
-        Validate(rezervasyon);
+        var eskiRezervasyon = _rezervasyonDal.IdIleGetir(rezervasyon.RezervasyonID)
+            ?? throw new BusinessRuleException("Rezervasyon bulunamadÄ±.");
+        Dogrula(rezervasyon);
         if (_rezervasyonDal.HasOverlap(rezervasyon.VarlikID, rezervasyon.BasTarih, rezervasyon.SonTarih, rezervasyon.RezervasyonID))
         {
-            throw new BusinessRuleException("Secilen tarih araliginda bu varlik icin baska aktif rezervasyon var.");
+            throw new BusinessRuleException("SeÃ§ilen tarih aralÄ±ÄŸÄ±nda bu varlÄ±k iÃ§in baÅŸka aktif rezervasyon var.");
         }
 
-        var hizmetToplam = _hizmetDal.GetToplamHizmetUcreti(rezervasyon.RezervasyonID);
+        var hizmetToplam = _hizmetDal.ToplamHizmetUcretiniGetir(rezervasyon.RezervasyonID);
         rezervasyon.ToplamUcret = ToplamUcretHesapla(rezervasyon.VarlikID, rezervasyon.BasTarih, rezervasyon.SonTarih, hizmetToplam);
-        var result = _rezervasyonDal.Update(rezervasyon);
-        if (result)
+        var sonuc = _rezervasyonDal.Guncelle(rezervasyon);
+        if (sonuc)
         {
             if (eskiRezervasyon.VarlikID != rezervasyon.VarlikID)
             {
-                _varlikDal.UpdateDurum(eskiRezervasyon.VarlikID, VarlikDurumu.Musait);
+                _varlikDal.DurumuGuncelle(eskiRezervasyon.VarlikID, VarlikDurumu.Musait);
             }
 
-            _varlikDal.UpdateDurum(rezervasyon.VarlikID, rezervasyon.Durum == RezervasyonDurumu.Aktif ? VarlikDurumu.Dolu : VarlikDurumu.Musait);
+            _varlikDal.DurumuGuncelle(rezervasyon.VarlikID, rezervasyon.Durum == RezervasyonDurumu.Aktif ? VarlikDurumu.Dolu : VarlikDurumu.Musait);
         }
 
-        return result;
+        return sonuc;
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool RezervasyonIptal(string rezervasyonID)
     {
-        var rezervasyon = _rezervasyonDal.GetById(rezervasyonID)
-            ?? throw new BusinessRuleException("Rezervasyon bulunamadi.");
+        var rezervasyon = _rezervasyonDal.IdIleGetir(rezervasyonID)
+            ?? throw new BusinessRuleException("Rezervasyon bulunamadÄ±.");
         rezervasyon.Durum = RezervasyonDurumu.Iptal;
-        var result = _rezervasyonDal.Update(rezervasyon);
-        _varlikDal.UpdateDurum(rezervasyon.VarlikID, VarlikDurumu.Musait);
-        return result;
+        var sonuc = _rezervasyonDal.Guncelle(rezervasyon);
+        _varlikDal.DurumuGuncelle(rezervasyon.VarlikID, VarlikDurumu.Musait);
+        return sonuc;
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool RezervasyonSil(string rezervasyonID)
     {
         if (string.IsNullOrWhiteSpace(rezervasyonID))
         {
-            throw new BusinessRuleException("Silinecek rezervasyon secilmelidir.");
+            throw new BusinessRuleException("Silinecek rezervasyon seÃ§ilmelidir.");
         }
 
-        var rezervasyon = _rezervasyonDal.GetById(rezervasyonID)
-            ?? throw new BusinessRuleException("Rezervasyon bulunamadi.");
-        var result = _rezervasyonDal.Delete(rezervasyonID);
-        if (result && rezervasyon.Durum == RezervasyonDurumu.Aktif)
+        var rezervasyon = _rezervasyonDal.IdIleGetir(rezervasyonID)
+            ?? throw new BusinessRuleException("Rezervasyon bulunamadÄ±.");
+        var sonuc = _rezervasyonDal.Sil(rezervasyonID);
+        if (sonuc && rezervasyon.Durum == RezervasyonDurumu.Aktif)
         {
-            _varlikDal.UpdateDurum(rezervasyon.VarlikID, VarlikDurumu.Musait);
+            _varlikDal.DurumuGuncelle(rezervasyon.VarlikID, VarlikDurumu.Musait);
         }
 
-        return result;
+        return sonuc;
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool CakismayiKontrolEt(string varlikId, DateTime bas, DateTime bit)
     {
         if (string.IsNullOrWhiteSpace(varlikId))
@@ -110,37 +118,41 @@ public class RezervasyonManager
         return _rezervasyonDal.HasOverlap(varlikId, bas, bit);
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public void VarlikDurumuGuncelle(string varlikId, bool durum)
     {
-        _varlikDal.UpdateDurum(varlikId, durum ? VarlikDurumu.Musait : VarlikDurumu.Dolu);
+        _varlikDal.DurumuGuncelle(varlikId, durum ? VarlikDurumu.Musait : VarlikDurumu.Dolu);
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public decimal ToplamUcretHesapla(string varlikID, DateTime basTarih, DateTime sonTarih, decimal ekstraHizmetToplami)
     {
-        var varlik = _varlikDal.GetById(varlikID)
-            ?? throw new BusinessRuleException("Secilen varlik bulunamadi.");
+        var varlik = _varlikDal.IdIleGetir(varlikID)
+            ?? throw new BusinessRuleException("SeÃ§ilen varlÄ±k bulunamadÄ±.");
         var geceSayisi = Math.Max(1, (sonTarih.Date - basTarih.Date).Days);
         return (varlik.GunlukUcret * geceSayisi) + ekstraHizmetToplami;
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public List<Rezervasyon> RezervasyonAra(string anahtar)
     {
         return string.IsNullOrWhiteSpace(anahtar)
-            ? _rezervasyonDal.GetAll()
-            : _rezervasyonDal.Search(anahtar.Trim());
+            ? _rezervasyonDal.TumunuGetir()
+            : _rezervasyonDal.Ara(anahtar.Trim());
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public bool CikisIslemiBaslat(string rezervasyonID)
     {
-        var rezervasyon = _rezervasyonDal.GetById(rezervasyonID)
-            ?? throw new BusinessRuleException("Rezervasyon bulunamadi.");
+        var rezervasyon = _rezervasyonDal.IdIleGetir(rezervasyonID)
+            ?? throw new BusinessRuleException("Rezervasyon bulunamadÄ±.");
         rezervasyon.Durum = RezervasyonDurumu.Tamamlandi;
-        _rezervasyonDal.Update(rezervasyon);
+        _rezervasyonDal.Guncelle(rezervasyon);
 
-        _varlikDal.UpdateDurum(rezervasyon.VarlikID, VarlikDurumu.Temizlikte);
-        return _operasyonDal.Insert(new Operasyon
+        _varlikDal.DurumuGuncelle(rezervasyon.VarlikID, VarlikDurumu.Temizlikte);
+        return _operasyonDal.Ekle(new Operasyon
         {
-            OperasyonID = IdGenerator.NewId("OPR"),
+            OperasyonID = IdGenerator.YeniId("OPR"),
             VarlikID = rezervasyon.VarlikID,
             OperasyonTipi = OperasyonTipi.Temizlik,
             Durum = false,
@@ -149,21 +161,22 @@ public class RezervasyonManager
         });
     }
 
-    private void Validate(Rezervasyon rezervasyon)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private void Dogrula(Rezervasyon rezervasyon)
     {
-        if (_musteriDal.GetById(rezervasyon.MusteriID) is null)
+        if (_musteriDal.IdIleGetir(rezervasyon.MusteriID) is null)
         {
-            throw new BusinessRuleException("Gecerli bir musteri secilmelidir.");
+            throw new BusinessRuleException("GeÃ§erli bir mÃ¼ÅŸteri seÃ§ilmelidir.");
         }
 
-        if (_varlikDal.GetById(rezervasyon.VarlikID) is null)
+        if (_varlikDal.IdIleGetir(rezervasyon.VarlikID) is null)
         {
-            throw new BusinessRuleException("Gecerli bir varlik secilmelidir.");
+            throw new BusinessRuleException("GeÃ§erli bir varlÄ±k seÃ§ilmelidir.");
         }
 
         if (rezervasyon.SonTarih.Date <= rezervasyon.BasTarih.Date)
         {
-            throw new BusinessRuleException("Cikis tarihi giris tarihinden sonra olmalidir.");
+            throw new BusinessRuleException("Ã‡Ä±kÄ±ÅŸ tarihi giriÅŸ tarihinden sonra olmalÄ±dÄ±r.");
         }
     }
 }

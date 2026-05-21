@@ -1,43 +1,48 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 using TinyTrack.Entities;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class OperasyonDal
 {
     private const string SelectSql = """
         SELECT o.operasyonID, o.varlikID, o.operasyonTipi, o.durum, o.tarih, o.notlar,
                v.ad AS varlikAdi
-        FROM dbo.operasyon o
-        INNER JOIN dbo.varlik v ON v.varlikID = o.varlikID
+        FROM operasyon o
+        INNER JOIN varlik v ON v.varlikID = o.varlikID
         """;
 
-    public List<Operasyon> GetAll()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Operasyon> TumunuGetir()
     {
-        return DbHelper.ExecuteList($"{SelectSql} ORDER BY o.tarih DESC", Map);
+        return DbHelper.ListeCalistir($"{SelectSql} ORDER BY o.tarih DESC", Esle);
     }
 
-    public Operasyon? GetById(string operasyonID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public Operasyon? IdIleGetir(string operasyonID)
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             $"{SelectSql} WHERE o.operasyonID = @operasyonID",
-            Map,
-            DbHelper.Parameter("@operasyonID", operasyonID));
+            Esle,
+            DbHelper.Parametre("@operasyonID", operasyonID));
     }
 
-    public bool Insert(Operasyon operasyon)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Ekle(Operasyon operasyon)
     {
         const string sql = """
-            INSERT INTO dbo.operasyon (operasyonID, varlikID, operasyonTipi, durum, tarih, notlar)
+            INSERT INTO operasyon (operasyonID, varlikID, operasyonTipi, durum, tarih, notlar)
             VALUES (@operasyonID, @varlikID, @operasyonTipi, @durum, @tarih, @notlar)
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(operasyon)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(operasyon)) > 0;
     }
 
-    public bool Update(Operasyon operasyon)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Guncelle(Operasyon operasyon)
     {
         const string sql = """
-            UPDATE dbo.operasyon
+            UPDATE operasyon
             SET varlikID = @varlikID,
                 operasyonTipi = @operasyonTipi,
                 durum = @durum,
@@ -45,48 +50,52 @@ public class OperasyonDal
                 notlar = @notlar
             WHERE operasyonID = @operasyonID
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(operasyon)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(operasyon)) > 0;
     }
 
-    public bool Delete(string operasyonID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Sil(string operasyonID)
     {
-        return DbHelper.ExecuteNonQuery(
-            "DELETE FROM dbo.operasyon WHERE operasyonID = @operasyonID",
-            DbHelper.Parameter("@operasyonID", operasyonID)) > 0;
+        return DbHelper.KomutCalistir(
+            "DELETE FROM operasyon WHERE operasyonID = @operasyonID",
+            DbHelper.Parametre("@operasyonID", operasyonID)) > 0;
     }
 
-    public int CountOpenByVarlik(string varlikID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public int VarligaGoreAcikSayisiniGetir(string varlikID)
     {
-        return DbHelper.ExecuteScalar<int>(
-            "SELECT COUNT(1) FROM dbo.operasyon WHERE varlikID = @varlikID AND durum = 0",
-            DbHelper.Parameter("@varlikID", varlikID));
+        return DbHelper.TekDegerCalistir<int>(
+            "SELECT COUNT(1) FROM operasyon WHERE varlikID = @varlikID AND durum = 0",
+            DbHelper.Parametre("@varlikID", varlikID));
     }
 
-    private static SqlParameter[] Parameters(Operasyon operasyon)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static SqliteParameter[] Parametreler(Operasyon operasyon)
     {
         return
         [
-            DbHelper.Parameter("@operasyonID", operasyon.OperasyonID),
-            DbHelper.Parameter("@varlikID", operasyon.VarlikID),
-            DbHelper.Parameter("@operasyonTipi", operasyon.OperasyonTipi.ToString()),
-            DbHelper.Parameter("@durum", operasyon.Durum),
-            DbHelper.Parameter("@tarih", operasyon.Tarih.Date),
-            DbHelper.Parameter("@notlar", operasyon.Notlar)
+            DbHelper.Parametre("@operasyonID", operasyon.OperasyonID),
+            DbHelper.Parametre("@varlikID", operasyon.VarlikID),
+            DbHelper.Parametre("@operasyonTipi", operasyon.OperasyonTipi.ToString()),
+            DbHelper.Parametre("@durum", operasyon.Durum),
+            DbHelper.Parametre("@tarih", operasyon.Tarih.Date),
+            DbHelper.Parametre("@notlar", operasyon.Notlar)
         ];
     }
 
-    private static Operasyon Map(SqlDataReader reader)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static Operasyon Esle(SqliteDataReader okuyucu)
     {
-        Enum.TryParse(reader.ReadString("operasyonTipi"), out OperasyonTipi operasyonTipi);
+        Enum.TryParse(okuyucu.MetinOku("operasyonTipi"), out OperasyonTipi operasyonTipi);
         return new Operasyon
         {
-            OperasyonID = reader.ReadString("operasyonID"),
-            VarlikID = reader.ReadString("varlikID"),
+            OperasyonID = okuyucu.MetinOku("operasyonID"),
+            VarlikID = okuyucu.MetinOku("varlikID"),
             OperasyonTipi = operasyonTipi,
-            Durum = reader.ReadBoolean("durum"),
-            Tarih = reader.ReadDateTime("tarih"),
-            Notlar = reader.ReadString("notlar"),
-            VarlikAdi = reader.ReadString("varlikAdi")
+            Durum = okuyucu.MantiksalOku("durum"),
+            Tarih = okuyucu.TarihOku("tarih"),
+            Notlar = okuyucu.MetinOku("notlar"),
+            VarlikAdi = okuyucu.MetinOku("varlikAdi")
         };
     }
 }

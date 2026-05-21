@@ -1,5 +1,6 @@
-namespace TinyTrack.Entities;
+﻿namespace TinyTrack.Entities;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class Varlik
 {
     public string VarlikID { get; set; } = string.Empty;

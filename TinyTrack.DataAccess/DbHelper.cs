@@ -1,65 +1,80 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public static class DbHelper
 {
     public static string ConnectionString { get; set; } =
-        "Server=(localdb)\\MSSQLLocalDB;Database=TinyTrackDb;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
+        "Data Source=TinyTrackDb.sqlite";
 
-    public static SqlConnection CreateConnection()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public static SqliteConnection BaglantiOlustur()
     {
-        return new SqlConnection(ConnectionString);
+        var baglanti = new SqliteConnection(ConnectionString);
+        baglanti.Open();
+
+        using var komut = baglanti.CreateCommand();
+        komut.CommandText = "PRAGMA foreign_keys = ON";
+        komut.ExecuteNonQuery();
+
+        return baglanti;
     }
 
-    public static SqlParameter Parameter(string name, object? value)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public static SqliteParameter Parametre(string name, object? deger)
     {
-        return new SqlParameter(name, value ?? DBNull.Value);
+        if (deger is DateTime dateTime)
+        {
+            deger = dateTime.TimeOfDay == TimeSpan.Zero
+                ? dateTime.ToString("yyyy-MM-dd")
+                : dateTime.ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        return new SqliteParameter(name, deger ?? DBNull.Value);
     }
 
-    public static int ExecuteNonQuery(string sql, params SqlParameter[] parameters)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public static int KomutCalistir(string sql, params SqliteParameter[] parameters)
     {
-        using var connection = CreateConnection();
-        using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddRange(parameters);
-        connection.Open();
-        return command.ExecuteNonQuery();
+        using var baglanti = BaglantiOlustur();
+        using var komut = new SqliteCommand(sql, baglanti);
+        komut.Parameters.AddRange(parameters);
+        return komut.ExecuteNonQuery();
     }
 
-    public static T? ExecuteScalar<T>(string sql, params SqlParameter[] parameters)
+    public static T? TekDegerCalistir<T>(string sql, params SqliteParameter[] parameters)
     {
-        using var connection = CreateConnection();
-        using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddRange(parameters);
-        connection.Open();
-        var value = command.ExecuteScalar();
-        if (value is null || value == DBNull.Value)
+        using var baglanti = BaglantiOlustur();
+        using var komut = new SqliteCommand(sql, baglanti);
+        komut.Parameters.AddRange(parameters);
+        var deger = komut.ExecuteScalar();
+        if (deger is null || deger == DBNull.Value)
         {
             return default;
         }
 
-        return (T)Convert.ChangeType(value, typeof(T));
+        return (T)Convert.ChangeType(deger, typeof(T));
     }
 
-    public static List<T> ExecuteList<T>(string sql, Func<SqlDataReader, T> mapper, params SqlParameter[] parameters)
+    public static List<T> ListeCalistir<T>(string sql, Func<SqliteDataReader, T> esleyici, params SqliteParameter[] parameters)
     {
-        using var connection = CreateConnection();
-        using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddRange(parameters);
-        connection.Open();
+        using var baglanti = BaglantiOlustur();
+        using var komut = new SqliteCommand(sql, baglanti);
+        komut.Parameters.AddRange(parameters);
 
-        using var reader = command.ExecuteReader();
-        var list = new List<T>();
-        while (reader.Read())
+        using var okuyucu = komut.ExecuteReader();
+        var liste = new List<T>();
+        while (okuyucu.Read())
         {
-            list.Add(mapper(reader));
+            liste.Add(esleyici(okuyucu));
         }
 
-        return list;
+        return liste;
     }
 
-    public static T? ExecuteSingle<T>(string sql, Func<SqlDataReader, T> mapper, params SqlParameter[] parameters)
+    public static T? TekKayitCalistir<T>(string sql, Func<SqliteDataReader, T> esleyici, params SqliteParameter[] parameters)
     {
-        return ExecuteList(sql, mapper, parameters).FirstOrDefault();
+        return ListeCalistir(sql, esleyici, parameters).FirstOrDefault();
     }
 }

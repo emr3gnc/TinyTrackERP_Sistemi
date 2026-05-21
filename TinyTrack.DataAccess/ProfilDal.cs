@@ -1,82 +1,90 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 using TinyTrack.Entities;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class ProfilDal
 {
-    public Kullanici? GetKullaniciById(string kullaniciID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public Kullanici? KullaniciyiIdIleGetir(string kullaniciID)
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             """
             SELECT kullaniciID, adSoyad, email, sifre, rol
-            FROM dbo.kullanici
+            FROM kullanici
             WHERE kullaniciID = @kullaniciID
             """,
             MapKullanici,
-            DbHelper.Parameter("@kullaniciID", kullaniciID));
+            DbHelper.Parametre("@kullaniciID", kullaniciID));
     }
 
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
     public Kullanici? CheckLogin(string email, string sifre)
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             """
             SELECT kullaniciID, adSoyad, email, sifre, rol
-            FROM dbo.kullanici
+            FROM kullanici
             WHERE email = @email AND sifre = @sifre
             """,
             MapKullanici,
-            DbHelper.Parameter("@email", email),
-            DbHelper.Parameter("@sifre", sifre));
+            DbHelper.Parametre("@email", email),
+            DbHelper.Parametre("@sifre", sifre));
     }
 
-    public bool UpdateKullanici(Kullanici kullanici)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool KullaniciyiGuncelle(Kullanici kullanici)
     {
-        return DbHelper.ExecuteNonQuery(
+        return DbHelper.KomutCalistir(
             """
-            UPDATE dbo.kullanici
+            UPDATE kullanici
             SET adSoyad = @adSoyad,
                 email = @email,
                 rol = @rol
             WHERE kullaniciID = @kullaniciID
             """,
-            DbHelper.Parameter("@adSoyad", kullanici.AdSoyad),
-            DbHelper.Parameter("@email", kullanici.Email),
-            DbHelper.Parameter("@rol", kullanici.Rol),
-            DbHelper.Parameter("@kullaniciID", kullanici.KullaniciID)) > 0;
+            DbHelper.Parametre("@adSoyad", kullanici.AdSoyad),
+            DbHelper.Parametre("@email", kullanici.Email),
+            DbHelper.Parametre("@rol", kullanici.Rol),
+            DbHelper.Parametre("@kullaniciID", kullanici.KullaniciID)) > 0;
     }
 
-    public bool UpdatePassword(string kullaniciID, string yeniSifre)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool SifreyiGuncelle(string kullaniciID, string yeniSifre)
     {
-        return DbHelper.ExecuteNonQuery(
-            "UPDATE dbo.kullanici SET sifre = @sifre WHERE kullaniciID = @kullaniciID",
-            DbHelper.Parameter("@sifre", yeniSifre),
-            DbHelper.Parameter("@kullaniciID", kullaniciID)) > 0;
+        return DbHelper.KomutCalistir(
+            "UPDATE kullanici SET sifre = @sifre WHERE kullaniciID = @kullaniciID",
+            DbHelper.Parametre("@sifre", yeniSifre),
+            DbHelper.Parametre("@kullaniciID", kullaniciID)) > 0;
     }
 
-    public string GetKullaniciYetkiRolu(string kullaniciID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public string KullaniciYetkiRolunuGetir(string kullaniciID)
     {
-        return DbHelper.ExecuteScalar<string>(
-            "SELECT rol FROM dbo.kullanici WHERE kullaniciID = @kullaniciID",
-            DbHelper.Parameter("@kullaniciID", kullaniciID)) ?? string.Empty;
+        return DbHelper.TekDegerCalistir<string>(
+            "SELECT rol FROM kullanici WHERE kullaniciID = @kullaniciID",
+            DbHelper.Parametre("@kullaniciID", kullaniciID)) ?? string.Empty;
     }
 
-    public IsletmeAyarlari GetSystemSettings()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public IsletmeAyarlari SistemAyarlariniGetir()
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             """
             SELECT ayarID, isletmeAdi, paraBirimi, dil, rezervasyonBildirimleri, temizlikUyarilari
-            FROM dbo.isletme_ayarlari
+            FROM isletme_ayarlari
             WHERE ayarID = 'SET-001'
             """,
             MapSettings) ?? new IsletmeAyarlari();
     }
 
-    public bool UpdateSystemSettings(IsletmeAyarlari ayarlar)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool SistemAyarlariniGuncelle(IsletmeAyarlari ayarlar)
     {
-        return DbHelper.ExecuteNonQuery(
+        return DbHelper.KomutCalistir(
             """
-            UPDATE dbo.isletme_ayarlari
+            UPDATE isletme_ayarlari
             SET isletmeAdi = @isletmeAdi,
                 paraBirimi = @paraBirimi,
                 dil = @dil,
@@ -84,36 +92,38 @@ public class ProfilDal
                 temizlikUyarilari = @temizlikUyarilari
             WHERE ayarID = @ayarID
             """,
-            DbHelper.Parameter("@isletmeAdi", ayarlar.IsletmeAdi),
-            DbHelper.Parameter("@paraBirimi", ayarlar.ParaBirimi),
-            DbHelper.Parameter("@dil", ayarlar.Dil),
-            DbHelper.Parameter("@rezervasyonBildirimleri", ayarlar.RezervasyonBildirimleri),
-            DbHelper.Parameter("@temizlikUyarilari", ayarlar.TemizlikUyarilari),
-            DbHelper.Parameter("@ayarID", ayarlar.AyarID)) > 0;
+            DbHelper.Parametre("@isletmeAdi", ayarlar.IsletmeAdi),
+            DbHelper.Parametre("@paraBirimi", ayarlar.ParaBirimi),
+            DbHelper.Parametre("@dil", ayarlar.Dil),
+            DbHelper.Parametre("@rezervasyonBildirimleri", ayarlar.RezervasyonBildirimleri),
+            DbHelper.Parametre("@temizlikUyarilari", ayarlar.TemizlikUyarilari),
+            DbHelper.Parametre("@ayarID", ayarlar.AyarID)) > 0;
     }
 
-    private static Kullanici MapKullanici(SqlDataReader reader)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static Kullanici MapKullanici(SqliteDataReader okuyucu)
     {
         return new Kullanici
         {
-            KullaniciID = reader.ReadString("kullaniciID"),
-            AdSoyad = reader.ReadString("adSoyad"),
-            Email = reader.ReadString("email"),
-            Sifre = reader.ReadString("sifre"),
-            Rol = reader.ReadString("rol")
+            KullaniciID = okuyucu.MetinOku("kullaniciID"),
+            AdSoyad = okuyucu.MetinOku("adSoyad"),
+            Email = okuyucu.MetinOku("email"),
+            Sifre = okuyucu.MetinOku("sifre"),
+            Rol = okuyucu.MetinOku("rol")
         };
     }
 
-    private static IsletmeAyarlari MapSettings(SqlDataReader reader)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static IsletmeAyarlari MapSettings(SqliteDataReader okuyucu)
     {
         return new IsletmeAyarlari
         {
-            AyarID = reader.ReadString("ayarID"),
-            IsletmeAdi = reader.ReadString("isletmeAdi"),
-            ParaBirimi = reader.ReadString("paraBirimi"),
-            Dil = reader.ReadString("dil"),
-            RezervasyonBildirimleri = reader.ReadBoolean("rezervasyonBildirimleri"),
-            TemizlikUyarilari = reader.ReadBoolean("temizlikUyarilari")
+            AyarID = okuyucu.MetinOku("ayarID"),
+            IsletmeAdi = okuyucu.MetinOku("isletmeAdi"),
+            ParaBirimi = okuyucu.MetinOku("paraBirimi"),
+            Dil = okuyucu.MetinOku("dil"),
+            RezervasyonBildirimleri = okuyucu.MantiksalOku("rezervasyonBildirimleri"),
+            TemizlikUyarilari = okuyucu.MantiksalOku("temizlikUyarilari")
         };
     }
 }

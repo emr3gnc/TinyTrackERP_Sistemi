@@ -1,52 +1,58 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.Sqlite;
 using TinyTrack.Entities;
 
 namespace TinyTrack.DataAccess;
 
+// Bu sınıfta ilgili sorumluluğu birlikte topluyoruz.
 public class OdemeDal
 {
     private const string SelectSql = """
         SELECT o.odemeID, o.rezervasyonID, o.ucret, o.odemetarihi, o.odemetipi, o.aciklama,
-               CONCAT(m.ad, ' ', m.soyad) AS musteriAdSoyad
-        FROM dbo.odeme o
-        INNER JOIN dbo.rezervasyon r ON r.rezervasyonID = o.rezervasyonID
-        INNER JOIN dbo.musteri m ON m.musteriID = r.musteriID
+               m.ad || ' ' || m.soyad AS musteriAdSoyad
+        FROM odeme o
+        INNER JOIN rezervasyon r ON r.rezervasyonID = o.rezervasyonID
+        INNER JOIN musteri m ON m.musteriID = r.musteriID
         """;
 
-    public List<Odeme> GetAll()
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Odeme> TumunuGetir()
     {
-        return DbHelper.ExecuteList($"{SelectSql} ORDER BY o.odemetarihi DESC", Map);
+        return DbHelper.ListeCalistir($"{SelectSql} ORDER BY o.odemetarihi DESC", Esle);
     }
 
-    public Odeme? GetById(string odemeID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public Odeme? IdIleGetir(string odemeID)
     {
-        return DbHelper.ExecuteSingle(
+        return DbHelper.TekKayitCalistir(
             $"{SelectSql} WHERE o.odemeID = @odemeID",
-            Map,
-            DbHelper.Parameter("@odemeID", odemeID));
+            Esle,
+            DbHelper.Parametre("@odemeID", odemeID));
     }
 
-    public List<Odeme> GetByRezervasyon(string rezervasyonID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public List<Odeme> RezervasyonaGoreGetir(string rezervasyonID)
     {
-        return DbHelper.ExecuteList(
+        return DbHelper.ListeCalistir(
             $"{SelectSql} WHERE o.rezervasyonID = @rezervasyonID ORDER BY o.odemetarihi DESC",
-            Map,
-            DbHelper.Parameter("@rezervasyonID", rezervasyonID));
+            Esle,
+            DbHelper.Parametre("@rezervasyonID", rezervasyonID));
     }
 
-    public bool Insert(Odeme odeme)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Ekle(Odeme odeme)
     {
         const string sql = """
-            INSERT INTO dbo.odeme (odemeID, rezervasyonID, ucret, odemetarihi, odemetipi, aciklama)
+            INSERT INTO odeme (odemeID, rezervasyonID, ucret, odemetarihi, odemetipi, aciklama)
             VALUES (@odemeID, @rezervasyonID, @ucret, @odemetarihi, @odemetipi, @aciklama)
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(odeme)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(odeme)) > 0;
     }
 
-    public bool Update(Odeme odeme)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Guncelle(Odeme odeme)
     {
         const string sql = """
-            UPDATE dbo.odeme
+            UPDATE odeme
             SET rezervasyonID = @rezervasyonID,
                 ucret = @ucret,
                 odemetarihi = @odemetarihi,
@@ -54,41 +60,44 @@ public class OdemeDal
                 aciklama = @aciklama
             WHERE odemeID = @odemeID
             """;
-        return DbHelper.ExecuteNonQuery(sql, Parameters(odeme)) > 0;
+        return DbHelper.KomutCalistir(sql, Parametreler(odeme)) > 0;
     }
 
-    public bool Delete(string odemeID)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    public bool Sil(string odemeID)
     {
-        return DbHelper.ExecuteNonQuery(
-            "DELETE FROM dbo.odeme WHERE odemeID = @odemeID",
-            DbHelper.Parameter("@odemeID", odemeID)) > 0;
+        return DbHelper.KomutCalistir(
+            "DELETE FROM odeme WHERE odemeID = @odemeID",
+            DbHelper.Parametre("@odemeID", odemeID)) > 0;
     }
 
-    private static SqlParameter[] Parameters(Odeme odeme)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static SqliteParameter[] Parametreler(Odeme odeme)
     {
         return
         [
-            DbHelper.Parameter("@odemeID", odeme.OdemeID),
-            DbHelper.Parameter("@rezervasyonID", odeme.RezervasyonID),
-            DbHelper.Parameter("@ucret", odeme.Ucret),
-            DbHelper.Parameter("@odemetarihi", odeme.OdemeTarihi.Date),
-            DbHelper.Parameter("@odemetipi", odeme.OdemeTipi.ToString()),
-            DbHelper.Parameter("@aciklama", odeme.Aciklama)
+            DbHelper.Parametre("@odemeID", odeme.OdemeID),
+            DbHelper.Parametre("@rezervasyonID", odeme.RezervasyonID),
+            DbHelper.Parametre("@ucret", odeme.Ucret),
+            DbHelper.Parametre("@odemetarihi", odeme.OdemeTarihi.Date),
+            DbHelper.Parametre("@odemetipi", odeme.OdemeTipi.ToString()),
+            DbHelper.Parametre("@aciklama", odeme.Aciklama)
         ];
     }
 
-    private static Odeme Map(SqlDataReader reader)
+    // Bu blokta ilgili işlemi birlikte yürütüyoruz.
+    private static Odeme Esle(SqliteDataReader okuyucu)
     {
-        Enum.TryParse(reader.ReadString("odemetipi"), out OdemeTipi odemeTipi);
+        Enum.TryParse(okuyucu.MetinOku("odemetipi"), out OdemeTipi odemeTipi);
         return new Odeme
         {
-            OdemeID = reader.ReadString("odemeID"),
-            RezervasyonID = reader.ReadString("rezervasyonID"),
-            Ucret = reader.ReadDecimal("ucret"),
-            OdemeTarihi = reader.ReadDateTime("odemetarihi"),
+            OdemeID = okuyucu.MetinOku("odemeID"),
+            RezervasyonID = okuyucu.MetinOku("rezervasyonID"),
+            Ucret = okuyucu.OndalikOku("ucret"),
+            OdemeTarihi = okuyucu.TarihOku("odemetarihi"),
             OdemeTipi = odemeTipi,
-            Aciklama = reader.ReadString("aciklama"),
-            MusteriAdSoyad = reader.ReadString("musteriAdSoyad")
+            Aciklama = okuyucu.MetinOku("aciklama"),
+            MusteriAdSoyad = okuyucu.MetinOku("musteriAdSoyad")
         };
     }
 }
