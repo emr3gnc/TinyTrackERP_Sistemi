@@ -1,6 +1,0 @@
-<Solution>
-  <Project Path="TinyTrack.Business/TinyTrack.Business.csproj" />
-  <Project Path="TinyTrack.DataAccess/TinyTrack.DataAccess.csproj" />
-  <Project Path="TinyTrack.Entities/TinyTrack.Entities.csproj" />
-  <Project Path="TinyTrack.WinForms/TinyTrack.WinForms.csproj" />
-</Solution>
